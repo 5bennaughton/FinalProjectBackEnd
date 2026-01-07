@@ -36,9 +36,6 @@ export  const authMiddleware = async (req: Request, res: Response, next: NextFun
       iat: number;
       exp: number;
     };
-    console.log("Decoded token:", decoded); 
-    console.log("Looking for user ID:", decoded.sub);
-
     const user = await database
       .select({ id: users.id })
       .from(users)
