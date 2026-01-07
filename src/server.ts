@@ -8,13 +8,13 @@ import { checkDbConnection } from "./db/checkDb.js"
 import authStravaRoutes from "./routes/oauth.routes.js";
 import sessionsRoutes from "./routes/session.routes.js"
 import authRoutes from "./routes/auth.routes.js"
+import friendRoutes from "./routes/friend.routes.js"
 
 const app = express();
 app.use(express.json());
 
 config();
 
-//Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended:true }))
 
@@ -22,6 +22,7 @@ app.use(express.urlencoded({ extended:true }))
 app.use("/oauth", authStravaRoutes);
 app.use("/sessions", sessionsRoutes);
 app.use("/auth", authRoutes);
+app.use("/friends", friendRoutes);
 
 
 const PORT = 5001;
@@ -55,4 +56,3 @@ process.on("uncaughtException", async (err) => {
   try { await pool.end(); } catch {}
   process.exit(1);
 });
-

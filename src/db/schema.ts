@@ -9,3 +9,20 @@ export const users = pgTable("User", {
     .notNull()
     .defaultNow(),
 });
+
+export const friendRequests = pgTable("FriendRequest", {
+  id: text("id").primaryKey(),
+  requesterId: text("requesterId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  addresseeId: text("addresseeId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull(),
+  createdAt: timestamp("createdAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updatedAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+});
