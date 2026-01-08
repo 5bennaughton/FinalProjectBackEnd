@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { and, eq, ilike, inArray, ne, or } from "drizzle-orm";
 import { database } from "../db/db.js";
 import { friendRequests, users } from "../db/schema.js";
+import { getAuthUserId } from '../helpers/helperFunctions.js'
 
 const FRIEND_STATUS = {
   PENDING: "pending",
@@ -19,16 +20,6 @@ function getString(value: unknown): string {
 
   return "";
 }
-
-// Read the authenticated user id (set by auth middleware)
-function getAuthUserId(req: Request, res: Response): string | null {
-  const userId = req.user?.id;
-  if (!userId) {
-    res.status(401).json({ message: "Unauthorized" });
-    return null;
-  }
-  return userId;
-};
 
 // Check if a user exists before creating a request
 async function userExists(userId: string) {
@@ -170,7 +161,7 @@ export async function createFriendRequest(req: Request, res: Response) {
     
     const id = randomUUID();
 
-    //Strore the request into thr DB
+    //Strore the request into Friend Request table
     await database.insert(friendRequests).values({
       id,
       requesterId: userId,
