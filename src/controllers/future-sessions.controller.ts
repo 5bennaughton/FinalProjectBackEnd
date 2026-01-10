@@ -97,13 +97,16 @@ export async function postFutureSession(req: Request, res: Response) {
 
 export async function listPosts(req: Request, res: Response) {
   try {
-    const userId = getAuthUserId(req, res);
-    if (!userId) return;
+    const authUserId = getAuthUserId(req, res);
+    if (!authUserId) return;
+
+    const paramUserId = typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    const targetUserId = paramUserId || authUserId;
     
     const posts = await database
       .select()
       .from(futureSessions)
-      .where(eq(futureSessions.userId, userId))
+      .where(eq(futureSessions.userId, targetUserId))
       .orderBy(asc(futureSessions.time));
 
     return res.status(200).json({ posts });

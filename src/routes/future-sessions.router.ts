@@ -7,6 +7,7 @@ const router = express.Router();
 router.use(authMiddleware);
 router.post("/post-session", postFutureSession);
 router.get("/list-posts", listPosts);
+router.get("/list-posts/:userId", listPosts);
 
 
 export default router;

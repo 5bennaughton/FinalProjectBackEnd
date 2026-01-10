@@ -31,10 +31,7 @@ export async function searchUsers(req: Request, res: Response) {
       .from(users)
       .where(
         and(
-          or(
-            ilike(users.name, `%${query}%`),
-            ilike(users.email, `%${query}%`)
-          ),
+          ilike(users.name, `%${query}%`),
           ne(users.id, userId)
         )
       )

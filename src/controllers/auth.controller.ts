@@ -4,6 +4,7 @@ import { users } from "../db/schema.js"
 import bcrypt from "bcrypt";
 import { generateToken } from "../utils/generateToken.js";
 import type { Request, Response } from "express";
+import { getAuthUserId } from "../helpers/helperFunctions.js";
 
 export const register = async (req: Request, res: Response) => {
   const { name, email, password } = req.body ?? {};
@@ -98,3 +99,26 @@ export const logout = async (req: Request, res: Response) => {
     message: "Logged out successfully",
   })
 }
+
+export const me = async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const found = await database
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const user = found[0];
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({ name: user.name });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
