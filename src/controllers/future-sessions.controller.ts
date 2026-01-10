@@ -3,7 +3,7 @@ import { getAuthUserId } from "../helpers/helperFunctions.js";
 import { database } from "../db/db.js";
 import { futureSessions } from '../db/schema.js'
 import { randomUUID } from "node:crypto";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 const SPORT_OPTIONS = ["kitesurfing", "wingfoiling", "windsurfing", "surfing"];
 type Sport = (typeof SPORT_OPTIONS)[number];
@@ -113,5 +113,33 @@ export async function listPosts(req: Request, res: Response) {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Server error" }); 
+  }
+}
+
+export async function deleteFutureSession(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const sessionId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+
+    if (!sessionId) {
+      return res.status(400).json({ message: "Session id is required" });
+    }
+
+    const deleted = await database
+      .delete(futureSessions)
+      .where(and(eq(futureSessions.id, sessionId), eq(futureSessions.userId, userId)))
+      .returning({ id: futureSessions.id });
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ message: "Future session not found" });
+    }
+
+    return res.status(200).json({ message: "Future session deleted" });
+    
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
   }
 }
