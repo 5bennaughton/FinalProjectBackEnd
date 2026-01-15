@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
 import { getString } from "../controllers/friend.controller.js";
 import { database } from "../db/db.js";
-import { and, ilike, ne, or } from "drizzle-orm";
-import { users } from "../db/schema.js";
+import { and, eq, ilike, ne, or } from "drizzle-orm";
+import { friendRequests, users } from "../db/schema.js";
 
 // Read the authenticated user id (set by auth middleware)
 export function getAuthUserId(req: Request, res: Response): string | null {
@@ -44,3 +44,34 @@ export async function searchUsers(req: Request, res: Response) {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+// Get all accepted friend ids for the current user
+export async function getFriendIdsForUser(userId: string) {
+  const rows = await database
+    .select({
+      requesterId: friendRequests.requesterId,
+      addresseeId: friendRequests.addresseeId,
+    })
+    .from(friendRequests)
+    .where(
+      and(
+        eq(friendRequests.status, "accepted"),
+        or(
+          eq(friendRequests.requesterId, userId),
+          eq(friendRequests.addresseeId, userId)
+        )
+      )
+    );
+
+  const friendIds: string[] = [];
+
+  for (const row of rows) {
+    if (row.requesterId === userId) {
+      friendIds.push(row.addresseeId);
+    } else {
+      friendIds.push(row.requesterId);
+    }
+  }
+
+  return friendIds;
+}

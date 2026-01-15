@@ -10,6 +10,7 @@ import sessionsRoutes from "./routes/session.routes.js"
 import authRoutes from "./routes/auth.routes.js"
 import friendRoutes from "./routes/friend.routes.js"
 import futureSessionRoutes from "./routes/future-sessions.router.js"
+import feedRoutes from "./routes/feed.routes.js";
 
 const app = express();
 app.use(express.json());
@@ -25,6 +26,7 @@ app.use("/sessions", sessionsRoutes);
 app.use("/auth", authRoutes);
 app.use("/friends", friendRoutes);
 app.use("/future-sessions", futureSessionRoutes);
+app.use("/feed", feedRoutes);
 
 
 const PORT = 5001;

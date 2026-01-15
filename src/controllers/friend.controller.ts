@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
-import { and, eq, ilike, inArray, ne, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { database } from "../db/db.js";
 import { friendRequests, users } from "../db/schema.js";
-import { getAuthUserId } from '../helpers/helperFunctions.js'
+import { getAuthUserId, getFriendIdsForUser } from "../helpers/helperFunctions.js";
 
 const FRIEND_STATUS = {
   PENDING: "pending",
@@ -62,37 +62,6 @@ async function getRequestBetweenTwoUsers(userA: string, userB: string) {
 
   return rows[0] ?? null;
 };
-
-// Get all accepted friend ids for the current user
-async function getFriendIdsForUser(userId: string) {
-  const rows = await database
-    .select({
-      requesterId: friendRequests.requesterId,
-      addresseeId: friendRequests.addresseeId,
-    })
-    .from(friendRequests)
-    .where(
-      and(
-        eq(friendRequests.status, FRIEND_STATUS.ACCEPTED),
-        or(
-          eq(friendRequests.requesterId, userId),
-          eq(friendRequests.addresseeId, userId)
-        )
-      )
-    );
-
-  const friendIds: string[] = [];
-
-for (const row of rows) {
-  if (row.requesterId === userId) {
-    friendIds.push(row.addresseeId);
-  } else {
-    friendIds.push(row.requesterId);
-  }
-}
-
-return friendIds;
-}
 
 // Create a pending friend request
 export async function createFriendRequest(req: Request, res: Response) {
