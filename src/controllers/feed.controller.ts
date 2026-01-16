@@ -24,6 +24,8 @@ export async function listFriendFeed(req: Request, res: Response) {
         sport: futureSessions.sport,
         time: futureSessions.time,
         location: futureSessions.location,
+        latitude: futureSessions.latitude,
+        longitude: futureSessions.longitude,
         notes: futureSessions.notes,
       })
       .from(futureSessions)

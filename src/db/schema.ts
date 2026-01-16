@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { doublePrecision, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * Table for the users, deals with registraion/login and auth
@@ -44,6 +44,8 @@ export const futureSessions = pgTable("FutureSession", {
   sport: text("sport").notNull(),
   time: timestamp("time", { precision: 3 }).notNull(),
   location: text("location").notNull(),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
   notes: text("notes"),
   createdAt: timestamp("createdAt", { precision: 3 })
     .notNull()

@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS "FutureSession" (
   sport text NOT NULL,
   "time" timestamp(3) NOT NULL,
   location text NOT NULL,
+  latitude double precision,
+  longitude double precision,
   notes text,
   "createdAt" timestamp(3) NOT NULL DEFAULT now(),
   "updatedAt" timestamp(3) NOT NULL DEFAULT now()
@@ -37,3 +39,11 @@ CREATE TABLE IF NOT EXISTS "FutureSession" (
 
 CREATE INDEX IF NOT EXISTS "FutureSession_userId_idx" ON "FutureSession" ("userId");
 CREATE INDEX IF NOT EXISTS "FutureSession_time_idx" ON "FutureSession" ("time");
+
+/**
+* Add coordinates to future sessions (nullable) 09/18/2025
+**/
+ALTER TABLE IF EXISTS "FutureSession"
+  ADD COLUMN IF NOT EXISTS latitude double precision;
+ALTER TABLE IF EXISTS "FutureSession"
+  ADD COLUMN IF NOT EXISTS longitude double precision;

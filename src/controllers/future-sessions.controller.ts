@@ -14,6 +14,8 @@ type SessionForm = {
   sport: Sport;
   time: Date;
   location: string;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 /**
@@ -44,6 +46,24 @@ function getRequiredString(value: unknown): string | null {
 }
 
 /**
+ * Parse an optional numeric value. Returns null if empty, undefined if invalid.
+ */
+function parseNumber(value: unknown): number | null | undefined {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed =
+    typeof value === "number" ? value : Number.parseFloat(String(value));
+
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
+/**
  * Create a future session for the authenticated user.
  */
 export async function postFutureSession(req: Request, res: Response) {
@@ -68,12 +88,24 @@ export async function postFutureSession(req: Request, res: Response) {
       return res.status(400).json({ message: "Location is required" });
     }
 
+    const latitude = parseNumber(req.body?.latitude ?? req.body?.lat);
+    if (latitude === undefined) {
+      return res.status(400).json({ message: "Invalid latitude value" });
+    }
+
+    const longitude = parseNumber(req.body?.longitude ?? req.body?.lon);
+    if (longitude === undefined) {
+      return res.status(400).json({ message: "Invalid longitude value" });
+    }
+
     const session: SessionForm = {
       id: String(Date.now()),
       userId,
       sport,
       time,
       location,
+      latitude,
+      longitude,
     };
 
     const id = randomUUID();
@@ -85,6 +117,8 @@ export async function postFutureSession(req: Request, res: Response) {
       sport: sport,
       time: time,
       location: location,
+      latitude,
+      longitude,
     });
 
     return res.status(201).json({ session });
