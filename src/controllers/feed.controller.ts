@@ -4,6 +4,10 @@ import { database } from "../db/db.js";
 import { futureSessions, users } from "../db/schema.js";
 import { getAuthUserId, getFriendIdsForUser } from "../helpers/helperFunctions.js";
 
+/**
+ * List posts from the authenticated user's friends.
+ * Joins user data and returns latest posts first.
+ */
 export async function listFriendFeed(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
@@ -18,15 +22,8 @@ export async function listFriendFeed(req: Request, res: Response) {
 
     const posts = await database
       .select({
-        id: futureSessions.id,
-        userId: futureSessions.userId,
-        userName: users.name,
-        sport: futureSessions.sport,
-        time: futureSessions.time,
-        location: futureSessions.location,
-        latitude: futureSessions.latitude,
-        longitude: futureSessions.longitude,
-        notes: futureSessions.notes,
+        futureSessions,
+        userName: users.name
       })
       .from(futureSessions)
       .innerJoin(users, eq(users.id, futureSessions.userId))

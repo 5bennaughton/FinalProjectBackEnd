@@ -13,10 +13,17 @@ const STRAVA_AUTH_URL =
   `&approval_prompt=force` +
   `&scope=${encodeURIComponent("activity:read_all")}`;
 
+/**
+ * Redirect the user to Strava's OAuth consent screen.
+ */
 export const startStravaOAuth = (req: Request, res: Response) => {
   return res.redirect(STRAVA_AUTH_URL);
 };
 
+/**
+ * Exchange the OAuth code for a token and persist it.
+ * Returns a simple confirmation message to the browser.
+ */
 export const stravaCallback = async (req: Request, res: Response) => {
   const code = req.query.code;
   

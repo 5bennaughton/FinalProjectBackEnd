@@ -29,17 +29,25 @@ const USER_AGENT =
   process.env.PHOTON_USER_AGENT ??
   "Booster2.0/1.0 (contact@yourdomain.com)";
 
+/**
+ * Normalize an unknown query input to a trimmed string.
+ */
 function getQueryString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/**
+ * Parse and clamp the limit query parameter.
+ */
 function parseLimit(value: unknown): number {
   const parsed =
     typeof value === "string" ? Number.parseInt(value, 10) : DEFAULT_LIMIT;
   return Number.isNaN(parsed) || parsed < 1 ? DEFAULT_LIMIT : parsed;
 }
 
-// Build a compact, human-friendly label from Photon properties.
+/**
+ * Build a compact, human-friendly label from Photon properties.
+ */
 function buildLabel(properties?: PhotonProperties): string {
   if (!properties) return "";
   const name =
@@ -50,6 +58,9 @@ function buildLabel(properties?: PhotonProperties): string {
     .join(", ");
 }
 
+/**
+ * Map a Photon feature to a validated location result.
+ */
 function mapFeature(feature: PhotonFeature): LocationResult | null {
   const coordinates = feature.geometry?.coordinates;
   if (!coordinates || coordinates.length < 2) return null;

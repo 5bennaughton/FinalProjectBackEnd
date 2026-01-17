@@ -6,6 +6,10 @@ import { generateToken } from "../utils/generateToken.js";
 import type { Request, Response } from "express";
 import { getAuthUserId } from "../helpers/helperFunctions.js";
 
+/**
+ * Register a new user and hash their password.
+ * Validates required fields and rejects duplicate emails.
+ */
 export const register = async (req: Request, res: Response) => {
   const { name, email, password } = req.body ?? {};
 
@@ -38,6 +42,10 @@ export const register = async (req: Request, res: Response) => {
   res.status(201).json({ message: `Thanks for signing up ${name}` })
 };
 
+/**
+ * Authenticate a user with email/password and issue a JWT cookie.
+ * Returns basic user info and a token payload on success.
+ */
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -88,6 +96,9 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Clear the auth cookie to log the user out.
+ */
 export const logout = async (req: Request, res: Response) => {
   res.cookie("jwt", "", {
     httpOnly: true,
@@ -100,6 +111,10 @@ export const logout = async (req: Request, res: Response) => {
   })
 }
 
+/**
+ * Return basic profile data for the authenticated user.
+ * Responds with 404 if the user no longer exists.
+ */
 export const me = async (req: Request, res: Response) => {
   try {
     const userId = getAuthUserId(req, res);

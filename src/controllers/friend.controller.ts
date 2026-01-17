@@ -12,7 +12,9 @@ const FRIEND_STATUS = {
 
 type FriendStatus = (typeof FRIEND_STATUS)[keyof typeof FRIEND_STATUS];
 
-// Normalize any input into a trimmed string
+/**
+ * Normalize any input into a trimmed string or empty string.
+ */
 export function getString(value: unknown): string {
   if (typeof value === "string") {
     return value.trim();
@@ -21,7 +23,9 @@ export function getString(value: unknown): string {
   return "";
 }
 
-// Check if a user exists before creating a request
+/**
+ * Check if a user exists before creating a request.
+ */
 async function userExists(userId: string) {
   const rows = await database
     .select({ id: users.id })
@@ -31,7 +35,9 @@ async function userExists(userId: string) {
   return rows.length > 0;
 };
 
-// Fetch a request row by id
+/**
+ * Fetch a request row by id or return null.
+ */
 async function getRequestById(requestId: string) {
   const rows = await database
     .select()
@@ -41,7 +47,9 @@ async function getRequestById(requestId: string) {
   return rows[0] ?? null;
 };
 
-// Check if a request already exists between two users (either direction)
+/**
+ * Check if a request already exists between two users (either direction).
+ */
 async function getRequestBetweenTwoUsers(userA: string, userB: string) {
   const rows = await database
     .select()
@@ -63,7 +71,10 @@ async function getRequestBetweenTwoUsers(userA: string, userB: string) {
   return rows[0] ?? null;
 };
 
-// Create a pending friend request
+/**
+ * Create a pending friend request for the current user.
+ * Validates input, prevents duplicates, and checks user existence.
+ */
 export async function createFriendRequest(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
@@ -118,7 +129,10 @@ export async function createFriendRequest(req: Request, res: Response) {
   }
 };
 
-// List pending requests (incoming/outgoing/all)
+/**
+ * List pending requests for the current user (incoming/outgoing/all).
+ * Applies a small limit to keep responses lightweight.
+ */
 export async function listFriendRequests(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
@@ -150,7 +164,10 @@ export async function listFriendRequests(req: Request, res: Response) {
   }
 }
 
-// Accept or decline a pending friend request
+/**
+ * Accept or decline a pending friend request.
+ * Validates ownership and updates or deletes the request row.
+ */
 export async function respondToFriendRequest(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
@@ -199,7 +216,10 @@ export async function respondToFriendRequest(req: Request, res: Response) {
   }
 };
 
-// List accepted friends for the current user
+/**
+ * List accepted friends for the current user.
+ * Fetches basic user records for the friend ids.
+ */
 export async function listFriends(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);

@@ -65,6 +65,7 @@ function parseNumber(value: unknown): number | null | undefined {
 
 /**
  * Create a future session for the authenticated user.
+ * Validates sport, time, location, and optional coordinates before insert.
  */
 export async function postFutureSession(req: Request, res: Response) {
   try {
@@ -129,6 +130,10 @@ export async function postFutureSession(req: Request, res: Response) {
   }
 }
 
+/**
+ * List future sessions for the target user (param or auth user).
+ * Orders results by session time ascending.
+ */
 export async function listPosts(req: Request, res: Response) {
   try {
     const authUserId = getAuthUserId(req, res);
@@ -150,6 +155,10 @@ export async function listPosts(req: Request, res: Response) {
   }
 }
 
+/**
+ * Delete a future session by id for the authenticated user.
+ * Verifies ownership and returns 404 when not found.
+ */
 export async function deleteFutureSession(req: Request, res: Response) {
   try {
     const authUserId = getAuthUserId(req, res);
@@ -175,6 +184,10 @@ export async function deleteFutureSession(req: Request, res: Response) {
   }
 }
 
+/**
+ * Add a comment to a future session post.
+ * Requires an authenticated user and a non-empty body.
+ */
 export async function addComment(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
@@ -203,6 +216,10 @@ export async function addComment(req: Request, res: Response) {
   }
 }
 
+/**
+ * List comments for a future session post in chronological order.
+ * Returns an empty list when no comments exist.
+ */
 export async function displayComments(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
