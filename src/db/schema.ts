@@ -54,3 +54,20 @@ export const futureSessions = pgTable("FutureSession", {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * Table for comments on future session posts
+ */
+export const futureSessionComments = pgTable("FutureSessionComment", {
+  id: text("id").primaryKey(),
+  postId: text("postId")
+    .notNull()
+    .references(() => futureSessions.id, { onDelete: "cascade" }),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("createdAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+});

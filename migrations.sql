@@ -47,3 +47,17 @@ ALTER TABLE IF EXISTS "FutureSession"
   ADD COLUMN IF NOT EXISTS latitude double precision;
 ALTER TABLE IF EXISTS "FutureSession"
   ADD COLUMN IF NOT EXISTS longitude double precision;
+
+/**
+* This is the table that deals with comments on future session posts 09/18/2025
+**/
+CREATE TABLE IF NOT EXISTS "FutureSessionComment" (
+  id text PRIMARY KEY,
+  "postId" text NOT NULL REFERENCES "FutureSession"(id) ON DELETE CASCADE,
+  "userId" text NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+  body text NOT NULL,
+  "createdAt" timestamp(3) NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS "FutureSessionComment_postId_idx" ON "FutureSessionComment" ("postId");
+CREATE INDEX IF NOT EXISTS "FutureSessionComment_userId_idx" ON "FutureSessionComment" ("userId");

@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { getAuthUserId } from "../helpers/helperFunctions.js";
 import { database } from "../db/db.js";
-import { futureSessions } from '../db/schema.js'
+import { futureSessionComments, futureSessions } from '../db/schema.js'
 import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -152,18 +152,15 @@ export async function listPosts(req: Request, res: Response) {
 
 export async function deleteFutureSession(req: Request, res: Response) {
   try {
-    const userId = getAuthUserId(req, res);
-    if (!userId) return;
+    const authUserId = getAuthUserId(req, res);
+    if (!authUserId) return;
 
     const sessionId = typeof req.params.id === "string" ? req.params.id.trim() : "";
-
-    if (!sessionId) {
-      return res.status(400).json({ message: "Session id is required" });
-    }
+    if (!sessionId) return res.status(400).json({ message: "Session id is required" });
 
     const deleted = await database
       .delete(futureSessions)
-      .where(and(eq(futureSessions.id, sessionId), eq(futureSessions.userId, userId)))
+      .where(and(eq(futureSessions.id, sessionId), eq(futureSessions.userId, authUserId)))
       .returning({ id: futureSessions.id });
 
     if (deleted.length === 0) {
@@ -172,6 +169,56 @@ export async function deleteFutureSession(req: Request, res: Response) {
 
     return res.status(200).json({ message: "Future session deleted" });
     
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+export async function addComment(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const postId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!postId) return res.status(400).json({ message: "Session id required" });
+
+    const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+    if (!body) return res.status(400).json({ message: "Comment body required" });
+
+    const id = randomUUID();
+
+    await database.insert(futureSessionComments).values({
+      id,
+      postId,
+      userId,
+      body 
+    });
+    
+    return res.status(201).json({ id, postId, userId, body });
+
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+export async function displayComments(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const postId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!postId) return res.status(400).json({ message: "Session id required" });
+
+    const comments = await database
+      .select()
+      .from(futureSessionComments)
+      .where(eq(futureSessionComments.postId, postId))
+      .orderBy(asc(futureSessionComments.createdAt));
+    
+    return res.status(200).json({ comments });
+
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Server error" });
