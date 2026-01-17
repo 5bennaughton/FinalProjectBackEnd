@@ -9,8 +9,8 @@ router.post("/post-session", postFutureSession);
 router.get("/list-posts", listPosts);
 router.get("/list-posts/:userId", listPosts);
 router.delete("/delete:id", deleteFutureSession);
-router.post("/add-comment", addComment);
-router.get("/display-comment", displayComments);
+router.post("/:id/add-comment", addComment);
+router.get("/:id/display-comments", displayComments);
 
 
 export default router;
