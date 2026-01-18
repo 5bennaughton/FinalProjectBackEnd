@@ -1,6 +1,6 @@
 import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
-import { postFutureSession, listPosts, deleteFutureSession, addComment, displayComments, listNearbySessions } from "../controllers/future-sessions.controller.js";
+import { postFutureSession, listPosts, deleteFutureSession, addComment, displayComments, deleteComment, listNearbySessions } from "../controllers/future-sessions.controller.js";
 
 const router = express.Router();
 
@@ -12,6 +12,7 @@ router.get("/nearby", listNearbySessions);
 router.delete("/delete:id", deleteFutureSession);
 router.post("/:id/add-comment", addComment);
 router.get("/:id/display-comments", displayComments);
+router.delete("/:id/delete-comment/:commentId", deleteComment);
 
 
 export default router;

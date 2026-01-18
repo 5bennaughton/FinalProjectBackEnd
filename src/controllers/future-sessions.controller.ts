@@ -251,6 +251,46 @@ export async function displayComments(req: Request, res: Response) {
 }
 
 /**
+ * Delete a comment for a future session post.
+ * Requires the authenticated user to own the comment.
+ */
+export async function deleteComment(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const postId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!postId) return res.status(400).json({ message: "Session id required" });
+
+    const commentId =
+      typeof req.params.commentId === "string" ? req.params.commentId.trim() : "";
+    if (!commentId) {
+      return res.status(400).json({ message: "Comment id required" });
+    }
+
+    const deleted = await database
+      .delete(futureSessionComments)
+      .where(
+        and(
+          eq(futureSessionComments.id, commentId),
+          eq(futureSessionComments.postId, postId),
+          eq(futureSessionComments.userId, userId)
+        )
+      )
+      .returning({ id: futureSessionComments.id });
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    return res.status(200).json({ message: "Comment deleted" });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
  * List future sessions within a radius (km) of the provided coordinates.
  * Uses PostGIS ST_DWithin with a geography point for accurate distances.
  */
