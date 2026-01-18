@@ -3,9 +3,8 @@
 * and when they were created
 **/
 
-
 /**
-* This is the table that deals with friend requests 07/02/2026
+* This is the table that deals with friend requests 07/01/2026
 **/
 CREATE TABLE IF NOT EXISTS "FriendRequest" (
   id text PRIMARY KEY,
@@ -22,7 +21,7 @@ CREATE INDEX IF NOT EXISTS "FriendRequest_status_idx" ON "FriendRequest" (status
 
 
 /**
-* This is the table that deals with a user posting a future session 07/02/2026
+* This is the table that deals with a user posting a future session 07/01/2026
 **/
 CREATE TABLE IF NOT EXISTS "FutureSession" (
   id text PRIMARY KEY,
@@ -41,7 +40,7 @@ CREATE INDEX IF NOT EXISTS "FutureSession_userId_idx" ON "FutureSession" ("userI
 CREATE INDEX IF NOT EXISTS "FutureSession_time_idx" ON "FutureSession" ("time");
 
 /**
-* Add coordinates to future sessions (nullable) 09/18/2025
+* Add coordinates to future sessions (nullable) 011/01/2026
 **/
 ALTER TABLE IF EXISTS "FutureSession"
   ADD COLUMN IF NOT EXISTS latitude double precision;
@@ -49,7 +48,7 @@ ALTER TABLE IF EXISTS "FutureSession"
   ADD COLUMN IF NOT EXISTS longitude double precision;
 
 /**
-* This is the table that deals with comments on future session posts 09/18/2025
+* This is the table that deals with comments on future session posts 09/01/2026
 **/
 CREATE TABLE IF NOT EXISTS "FutureSessionComment" (
   id text PRIMARY KEY,
@@ -61,3 +60,9 @@ CREATE TABLE IF NOT EXISTS "FutureSessionComment" (
 
 CREATE INDEX IF NOT EXISTS "FutureSessionComment_postId_idx" ON "FutureSessionComment" ("postId");
 CREATE INDEX IF NOT EXISTS "FutureSessionComment_userId_idx" ON "FutureSessionComment" ("userId");
+
+
+/**
+* Enable PostGIS extension for geo queries 17/01/2026
+**/
+CREATE EXTENSION IF NOT EXISTS postgis;

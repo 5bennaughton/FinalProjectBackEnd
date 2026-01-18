@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
 import { getAuthUserId } from "../helpers/helperFunctions.js";
 import { database } from "../db/db.js";
-import { futureSessionComments, futureSessions } from '../db/schema.js'
+import { futureSessionComments, futureSessions, users } from '../db/schema.js'
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 const SPORT_OPTIONS = ["kitesurfing", "wingfoiling", "windsurfing", "surfing"];
 type Sport = (typeof SPORT_OPTIONS)[number];
@@ -229,12 +229,90 @@ export async function displayComments(req: Request, res: Response) {
     if (!postId) return res.status(400).json({ message: "Session id required" });
 
     const comments = await database
-      .select()
+      .select({
+        id: futureSessionComments.id,
+        postId: futureSessionComments.postId,
+        userId: futureSessionComments.userId,
+        body: futureSessionComments.body,
+        createdAt: futureSessionComments.createdAt,
+        userName: users.name,
+      })
       .from(futureSessionComments)
+      .innerJoin(users, eq(users.id, futureSessionComments.userId))
       .where(eq(futureSessionComments.postId, postId))
       .orderBy(asc(futureSessionComments.createdAt));
     
     return res.status(200).json({ comments });
+
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
+ * List future sessions within a radius (km) of the provided coordinates.
+ * Uses PostGIS ST_DWithin with a geography point for accurate distances.
+ */
+export async function listNearbySessions(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const latitude = parseNumber(req.query.lat ?? req.query.latitude);
+
+    if (latitude === null || latitude === undefined) {
+      return res.status(400).json({ message: "Latitude is required" });
+    }
+
+    const longitude = parseNumber( req.query.lng ?? req.query.lon ?? req.query.longitude );
+
+    if (longitude === null || longitude === undefined) {
+      return res.status(400).json({ message: "Longitude is required" });
+    }
+
+    const radiusRaw = parseNumber(req.query.radiusKm ?? req.query.radius);
+    if (radiusRaw === undefined) {
+      return res.status(400).json({ message: "Invalid radius value" });
+    }
+
+    const radiusKm = radiusRaw ?? 10;
+    if (radiusKm <= 0) {
+      return res.status(400).json({ message: "Radius must be greater than 0" });
+    }
+
+    // SQL that will find posts that are within 'radiusKm'
+    const result = await database.execute(sql`
+      SELECT
+        "FutureSession"."id",
+        "FutureSession"."userId",
+        "User"."name" AS "userName",
+        "FutureSession"."sport",
+        "FutureSession"."time",
+        "FutureSession"."location",
+        "FutureSession"."latitude",
+        "FutureSession"."longitude",
+        "FutureSession"."notes",
+        "FutureSession"."createdAt",
+        "FutureSession"."updatedAt"
+      FROM "FutureSession"
+      INNER JOIN "User"
+        ON "User"."id" = "FutureSession"."userId"
+      WHERE "FutureSession"."latitude" IS NOT NULL
+        AND "FutureSession"."longitude" IS NOT NULL
+        AND ST_DWithin(
+          ST_SetSRID(
+            ST_MakePoint("FutureSession"."longitude", "FutureSession"."latitude"),
+            4326
+          )::geography,
+          ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+          ${radiusKm} * 1000
+        )
+      ORDER BY "FutureSession"."time" ASC
+    `);
+
+    const posts = (result as { rows?: unknown[] }).rows ?? [];
+    return res.status(200).json({ posts });
 
   } catch (e) {
     console.error(e);
