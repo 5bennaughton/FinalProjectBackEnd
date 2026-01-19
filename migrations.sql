@@ -66,3 +66,21 @@ CREATE INDEX IF NOT EXISTS "FutureSessionComment_userId_idx" ON "FutureSessionCo
 * Enable PostGIS extension for geo queries 17/01/2026
 **/
 CREATE EXTENSION IF NOT EXISTS postgis;
+
+/**
+* This is the table that deals with user-created spots 18/01/2026
+**/
+CREATE TABLE IF NOT EXISTS "Spot" (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  type text NOT NULL,
+  latitude double precision NOT NULL,
+  longitude double precision NOT NULL,
+  description text,
+  "createdBy" text NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+  "createdAt" timestamp(3) NOT NULL DEFAULT now(),
+  "updatedAt" timestamp(3) NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS "Spot_type_idx" ON "Spot" (type);
+CREATE INDEX IF NOT EXISTS "Spot_createdBy_idx" ON "Spot" ("createdBy");

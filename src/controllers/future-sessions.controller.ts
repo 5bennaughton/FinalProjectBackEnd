@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getAuthUserId } from "../helpers/helperFunctions.js";
+import { getAuthUserId, getRequiredString, parseNumber } from "../helpers/helperFunctions.js";
 import { database } from "../db/db.js";
 import { futureSessionComments, futureSessions, users } from '../db/schema.js'
 import { randomUUID } from "node:crypto";
@@ -34,33 +34,6 @@ function parseTime(value: unknown): Date | null {
   if (!value) return null;
   const parsed = new Date(String(value));
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-/**
- * Read a non-empty string value or return null.
- */
-function getRequiredString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
-/**
- * Parse an optional numeric value. Returns null if empty, undefined if invalid.
- */
-function parseNumber(value: unknown): number | null | undefined {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-
-  const parsed =
-    typeof value === "number" ? value : Number.parseFloat(String(value));
-
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-
-  return parsed;
 }
 
 /**

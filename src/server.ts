@@ -12,6 +12,7 @@ import friendRoutes from "./routes/friend.routes.js"
 import futureSessionRoutes from "./routes/future-sessions.router.js"
 import feedRoutes from "./routes/feed.routes.js";
 import geoRoutes from "./routes/geo.routes.js";
+import globalSpotsRoutes from "./routes/global-spots.router.js";
 
 const app = express();
 app.use(express.json());
@@ -29,6 +30,7 @@ app.use("/friends", friendRoutes);
 app.use("/future-sessions", futureSessionRoutes);
 app.use("/feed", feedRoutes);
 app.use("/geo", geoRoutes);
+app.use("/global-spots", globalSpotsRoutes);
 
 
 const PORT = 5001;

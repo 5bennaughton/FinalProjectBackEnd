@@ -71,3 +71,24 @@ export const futureSessionComments = pgTable("FutureSessionComment", {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * Table for user-created spots on the global map.
+ */
+export const spots = pgTable("Spot", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  latitude: doublePrecision("latitude").notNull(),
+  longitude: doublePrecision("longitude").notNull(),
+  description: text("description"),
+  createdBy: text("createdBy")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updatedAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+});

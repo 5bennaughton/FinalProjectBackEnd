@@ -4,7 +4,9 @@ import { database } from "../db/db.js";
 import { and, eq, ilike, ne, or } from "drizzle-orm";
 import { friendRequests, users } from "../db/schema.js";
 
-// Read the authenticated user id (set by auth middleware)
+/**
+ * Read the authenticated user id (set by auth middleware)
+ */
 export function getAuthUserId(req: Request, res: Response): string | null {
   const userId = req.user?.id;
   if (!userId) {
@@ -14,7 +16,9 @@ export function getAuthUserId(req: Request, res: Response): string | null {
   return userId;
 };
 
-// Search users by name or email, excluding the current user
+/**
+ * Search users by name or email, excluding the current user
+ */
 export async function searchUsers(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
@@ -45,7 +49,9 @@ export async function searchUsers(req: Request, res: Response) {
   }
 };
 
-// Get all accepted friend ids for the current user
+/**
+ * Get all accepted friend ids for the current user
+ */
 export async function getFriendIdsForUser(userId: string) {
   const rows = await database
     .select({
@@ -74,4 +80,23 @@ export async function getFriendIdsForUser(userId: string) {
   }
 
   return friendIds;
+}
+
+/**
+ * Ensures value is a string, then trims the string and returns
+ */
+export function getRequiredString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * Parse an optional numeric value. Returns null if empty, undefined if invalid.
+ */
+export function parseNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed =
+    typeof value === "number" ? value : Number.parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
 }
