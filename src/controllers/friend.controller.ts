@@ -72,6 +72,43 @@ async function getRequestBetweenTwoUsers(userA: string, userB: string) {
 };
 
 /**
+ * Return the friendship status between the current user and a target user.
+ */
+export async function getFriendStatus(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const targetUserId = getString(req.params.userId);
+    if (!targetUserId) {
+      return res.status(400).json({ message: "User id is required" });
+    }
+
+    if (targetUserId === userId) {
+      return res.status(200).json({ status: "self" });
+    }
+
+    const existing = await getRequestBetweenTwoUsers(userId, targetUserId);
+    if (!existing) {
+      return res.status(200).json({ status: "none" });
+    }
+
+    if (existing.status === FRIEND_STATUS.ACCEPTED) {
+      return res.status(200).json({ status: "friends" });
+    }
+
+    if (existing.requesterId === userId) {
+      return res.status(200).json({ status: "outgoing" });
+    }
+
+    return res.status(200).json({ status: "incoming" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
  * Create a pending friend request for the current user.
  * Validates input, prevents duplicates, and checks user existence.
  */

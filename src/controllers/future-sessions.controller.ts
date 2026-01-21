@@ -3,7 +3,7 @@ import { getAuthUserId, getRequiredString, parseNumber } from "../helpers/helper
 import { database } from "../db/db.js";
 import { futureSessionComments, futureSessions, users } from '../db/schema.js'
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 
 const SPORT_OPTIONS = ["kitesurfing", "wingfoiling", "windsurfing", "surfing"];
 type Sport = (typeof SPORT_OPTIONS)[number];
@@ -11,6 +11,7 @@ type Sport = (typeof SPORT_OPTIONS)[number];
 type SessionForm = {
   id: string;
   userId: string;
+  spotId: string | null;
   sport: Sport;
   time: Date;
   location: string;
@@ -62,6 +63,10 @@ export async function postFutureSession(req: Request, res: Response) {
       return res.status(400).json({ message: "Location is required" });
     }
 
+    const rawSpotId =
+      typeof req.body?.spotId === "string" ? req.body.spotId.trim() : "";
+    const spotId = rawSpotId || null;
+
     const latitude = parseNumber(req.body?.latitude ?? req.body?.lat);
     if (latitude === undefined) {
       return res.status(400).json({ message: "Invalid latitude value" });
@@ -75,6 +80,7 @@ export async function postFutureSession(req: Request, res: Response) {
     const session: SessionForm = {
       id: String(Date.now()),
       userId,
+      spotId,
       sport,
       time,
       location,
@@ -91,6 +97,7 @@ export async function postFutureSession(req: Request, res: Response) {
       sport: sport,
       time: time,
       location: location,
+      spotId,
       latitude,
       longitude,
     });
@@ -125,6 +132,51 @@ export async function listPosts(req: Request, res: Response) {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Server error" }); 
+  }
+}
+
+/**
+ * List future sessions for a spot id, filtered to those after a timestamp.
+ * Defaults to sessions after the current time when no `after` param is provided.
+ */
+export async function listPostsAtSpot(req: Request, res: Response) {
+  try {
+    const authUserId = getAuthUserId(req, res);
+    if (!authUserId) return;
+
+    const spotId =
+      typeof req.params.spotId === "string" ? req.params.spotId.trim() : "";
+    if (!spotId) {
+      return res.status(400).json({ message: "Spot id is required" });
+    }
+
+    const afterRaw = req.query.after ?? req.query.time;
+    let after = new Date();
+
+    if (afterRaw !== undefined) {
+      const parsed = parseTime(afterRaw);
+      if (!parsed) {
+        return res.status(400).json({ message: "Invalid after value" });
+      }
+      after = parsed;
+    }
+
+    const posts = await database
+      .select({
+        futureSessions,
+        userName: users.name,
+      })
+      .from(futureSessions)
+      .innerJoin(users, eq(users.id, futureSessions.userId))
+      .where(
+        and(eq(futureSessions.spotId, spotId), gt(futureSessions.time, after))
+      )
+      .orderBy(asc(futureSessions.time));
+
+    return res.status(200).json({ posts });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Server error" });
   }
 }
 
@@ -300,6 +352,7 @@ export async function listNearbySessions(req: Request, res: Response) {
         "FutureSession"."id",
         "FutureSession"."userId",
         "User"."name" AS "userName",
+        "FutureSession"."spotId",
         "FutureSession"."sport",
         "FutureSession"."time",
         "FutureSession"."location",

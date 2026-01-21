@@ -84,3 +84,18 @@ CREATE TABLE IF NOT EXISTS "Spot" (
 
 CREATE INDEX IF NOT EXISTS "Spot_type_idx" ON "Spot" (type);
 CREATE INDEX IF NOT EXISTS "Spot_createdBy_idx" ON "Spot" ("createdBy");
+
+/**
+* Add spotId to future sessions (nullable) 20/01/2026
+**/
+ALTER TABLE IF EXISTS "FutureSession"
+  ADD COLUMN IF NOT EXISTS "spotId" text REFERENCES "Spot"(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS "FutureSession_spotId_idx" ON "FutureSession" ("spotId");
+
+/**
+* Add bio to users 21/01/2026
+**/
+ALTER TABLE IF EXISTS "User"
+  ADD COLUMN IF NOT EXISTS bio text;
+  ADD COLUMN IF NOT EXISTS "avatarUrl" text;
+

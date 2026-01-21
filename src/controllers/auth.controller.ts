@@ -61,6 +61,8 @@ export const login = async (req: Request, res: Response) => {
         email: users.email,
         password: users.password,
         name: users.name,
+        avatarUrl: users.avatarUrl,
+        bio: users.bio,
       })
       .from(users)
       .where(eq(users.email, email))
@@ -87,7 +89,13 @@ export const login = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({
-      user: { id: user.id, email: email },
+      user: {
+        id: user.id,
+        email: email,
+        name: user.name,
+        bio: user.bio ?? null,
+        avatarUrl: user.avatarUrl ?? null,
+      },
        token: token,
     });
   } catch (err) {
@@ -121,7 +129,7 @@ export const me = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const found = await database
-      .select({ name: users.name })
+      .select({ name: users.name, bio: users.bio, avatarUrl: users.avatarUrl })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -131,7 +139,85 @@ export const me = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    return res.status(200).json({ name: user.name });
+    return res.status(200).json({
+      name: user.name,
+      bio: user.bio ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * Update the authenticated user's profile fields.
+ * Supports name and bio updates in a single call.
+ */
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const updates: {
+      name?: string;
+      bio?: string | null;
+      avatarUrl?: string | null;
+    } = {};
+
+    if (req.body?.name !== undefined) {
+      if (typeof req.body.name !== "string") {
+        return res.status(400).json({ message: "Name must be a string" });
+      }
+      const trimmed = req.body.name.trim();
+      if (!trimmed) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+      updates.name = trimmed;
+    }
+
+    if (req.body?.bio !== undefined) {
+      if (typeof req.body.bio !== "string") {
+        return res.status(400).json({ message: "Bio must be a string" });
+      }
+      const trimmed = req.body.bio.trim();
+      // Empty string clears the bio.
+      updates.bio = trimmed ? trimmed : null;
+    }
+
+    if (req.body?.avatarUrl !== undefined) {
+      if (typeof req.body.avatarUrl !== "string") {
+        return res.status(400).json({ message: "Avatar URL must be a string" });
+      }
+      const trimmed = req.body.avatarUrl.trim();
+      // Empty string clears the avatar.
+      updates.avatarUrl = trimmed ? trimmed : null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "No profile fields provided" });
+    }
+
+    const updated = await database
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, userId))
+      .returning({
+        name: users.name,
+        bio: users.bio,
+        avatarUrl: users.avatarUrl,
+      });
+
+    const user = updated[0];
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({
+      name: user.name,
+      bio: user.bio ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });

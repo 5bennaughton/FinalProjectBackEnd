@@ -2,6 +2,7 @@ import express from "express";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import {
   createFriendRequest,
+  getFriendStatus,
   listFriends,
   listFriendRequests,
   respondToFriendRequest,
@@ -17,5 +18,6 @@ router.post("/requests", createFriendRequest);
 router.get("/list-requests", listFriendRequests);
 router.patch("/requests-re/:id", respondToFriendRequest);
 router.get("/list", listFriends);
+router.get("/status/:userId", getFriendStatus);
 
 export default router;
