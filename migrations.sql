@@ -97,5 +97,35 @@ CREATE INDEX IF NOT EXISTS "FutureSession_spotId_idx" ON "FutureSession" ("spotI
 **/
 ALTER TABLE IF EXISTS "User"
   ADD COLUMN IF NOT EXISTS bio text;
+ALTER TABLE IF EXISTS "User"
   ADD COLUMN IF NOT EXISTS "avatarUrl" text;
 
+/**
+* Add profile visibility to users 24/01/2026
+**/
+ALTER TABLE IF EXISTS "User"
+  ADD COLUMN IF NOT EXISTS "profileVisibility" text NOT NULL DEFAULT 'public';
+
+/**
+* Add visibility controls to future sessions 24/01/2026
+**/
+ALTER TABLE IF EXISTS "FutureSession"
+  ADD COLUMN IF NOT EXISTS "visibility" text NOT NULL DEFAULT 'public';
+ALTER TABLE IF EXISTS "FutureSession"
+  ADD COLUMN IF NOT EXISTS "allowedViewerIds" text[];
+
+CREATE INDEX IF NOT EXISTS "FutureSession_visibility_idx" ON "FutureSession" ("visibility");
+
+/**
+* This is the table that deals with user blocks 25/01/2026
+**/
+CREATE TABLE IF NOT EXISTS "UserBlock" (
+  id text PRIMARY KEY,
+  "blockerId" text NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+  "blockedId" text NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+  "createdAt" timestamp(3) NOT NULL DEFAULT now(),
+  UNIQUE ("blockerId", "blockedId")
+);
+
+CREATE INDEX IF NOT EXISTS "UserBlock_blockerId_idx" ON "UserBlock" ("blockerId");
+CREATE INDEX IF NOT EXISTS "UserBlock_blockedId_idx" ON "UserBlock" ("blockedId");

@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { getString } from "../controllers/friend.controller.js";
 import { database } from "../db/db.js";
 import { and, eq, ilike, ne, or } from "drizzle-orm";
-import { friendRequests, users } from "../db/schema.js";
+import { friendRequests, userBlocks, users } from "../db/schema.js";
 
 /**
  * Read the authenticated user id (set by auth middleware)
@@ -80,6 +80,55 @@ export async function getFriendIdsForUser(userId: string) {
   }
 
   return friendIds;
+}
+
+/**
+ * Get all user ids that are blocked either direction with the current user.
+ * Includes users you blocked and users who blocked you.
+ */
+export async function getBlockedUserIds(userId: string) {
+  const rows = await database
+    .select({
+      blockerId: userBlocks.blockerId,
+      blockedId: userBlocks.blockedId,
+    })
+    .from(userBlocks)
+    .where(
+      or(
+        eq(userBlocks.blockerId, userId),
+        eq(userBlocks.blockedId, userId)
+      )
+    );
+
+  const blockedIds = new Set<string>();
+
+  for (const row of rows) {
+    if (row.blockerId === userId) {
+      blockedIds.add(row.blockedId);
+    } else if (row.blockedId === userId) {
+      blockedIds.add(row.blockerId);
+    }
+  }
+
+  return Array.from(blockedIds);
+}
+
+/**
+ * Check if two users have a block relationship in either direction.
+ */
+export async function isBlockedBetween(userA: string, userB: string) {
+  const rows = await database
+    .select({ id: userBlocks.id })
+    .from(userBlocks)
+    .where(
+      or(
+        and(eq(userBlocks.blockerId, userA), eq(userBlocks.blockedId, userB)),
+        and(eq(userBlocks.blockerId, userB), eq(userBlocks.blockedId, userA))
+      )
+    )
+    .limit(1);
+
+  return rows.length > 0;
 }
 
 /**

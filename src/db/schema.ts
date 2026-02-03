@@ -10,6 +10,7 @@ export const users = pgTable("User", {
   avatarUrl: text("avatarUrl"),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
+  profileVisibility: text("profileVisibility").notNull().default("public"),
   createdAt: timestamp("createdAt", { precision: 3 })
     .notNull()
     .defaultNow(),
@@ -71,6 +72,8 @@ export const futureSessions = pgTable("FutureSession", {
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   notes: text("notes"),
+  visibility: text("visibility").notNull().default("public"),
+  allowedViewerIds: text("allowedViewerIds").array(),
   createdAt: timestamp("createdAt", { precision: 3 })
     .notNull()
     .defaultNow(),
@@ -91,6 +94,22 @@ export const futureSessionComments = pgTable("FutureSessionComment", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   body: text("body").notNull(),
+  createdAt: timestamp("createdAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Table for user blocks (privacy feature).
+ */
+export const userBlocks = pgTable("UserBlock", {
+  id: text("id").primaryKey(),
+  blockerId: text("blockerId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  blockedId: text("blockedId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("createdAt", { precision: 3 })
     .notNull()
     .defaultNow(),

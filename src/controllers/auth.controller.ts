@@ -63,6 +63,7 @@ export const login = async (req: Request, res: Response) => {
         name: users.name,
         avatarUrl: users.avatarUrl,
         bio: users.bio,
+        profileVisibility: users.profileVisibility,
       })
       .from(users)
       .where(eq(users.email, email))
@@ -95,6 +96,7 @@ export const login = async (req: Request, res: Response) => {
         name: user.name,
         bio: user.bio ?? null,
         avatarUrl: user.avatarUrl ?? null,
+        profileVisibility: user.profileVisibility ?? "public",
       },
        token: token,
     });
@@ -129,7 +131,12 @@ export const me = async (req: Request, res: Response) => {
     if (!userId) return;
 
     const found = await database
-      .select({ name: users.name, bio: users.bio, avatarUrl: users.avatarUrl })
+      .select({
+        name: users.name,
+        bio: users.bio,
+        avatarUrl: users.avatarUrl,
+        profileVisibility: users.profileVisibility,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -143,6 +150,7 @@ export const me = async (req: Request, res: Response) => {
       name: user.name,
       bio: user.bio ?? null,
       avatarUrl: user.avatarUrl ?? null,
+      profileVisibility: user.profileVisibility ?? "public",
     });
   } catch (err) {
     console.error(err);
@@ -163,6 +171,7 @@ export const updateProfile = async (req: Request, res: Response) => {
       name?: string;
       bio?: string | null;
       avatarUrl?: string | null;
+      profileVisibility?: string;
     } = {};
 
     if (req.body?.name !== undefined) {
@@ -194,6 +203,18 @@ export const updateProfile = async (req: Request, res: Response) => {
       updates.avatarUrl = trimmed ? trimmed : null;
     }
 
+    if (req.body?.profileVisibility !== undefined) {
+      if (typeof req.body.profileVisibility !== "string") {
+        return res.status(400).json({ message: "Profile visibility must be a string" });
+      }
+      const trimmed = req.body.profileVisibility.trim().toLowerCase();
+      const allowed = ["public", "friends", "private"];
+      if (!allowed.includes(trimmed)) {
+        return res.status(400).json({ message: "Profile visibility must be public, friends, or private" });
+      }
+      updates.profileVisibility = trimmed;
+    }
+
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No profile fields provided" });
     }
@@ -206,6 +227,7 @@ export const updateProfile = async (req: Request, res: Response) => {
         name: users.name,
         bio: users.bio,
         avatarUrl: users.avatarUrl,
+        profileVisibility: users.profileVisibility,
       });
 
     const user = updated[0];
@@ -217,7 +239,39 @@ export const updateProfile = async (req: Request, res: Response) => {
       name: user.name,
       bio: user.bio ?? null,
       avatarUrl: user.avatarUrl ?? null,
+      profileVisibility: user.profileVisibility ?? "public",
     });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * Delete the authenticated user and cascade their data.
+ * Relies on DB foreign key cascades for related records.
+ */
+export const deleteMe = async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const deleted = await database
+      .delete(users)
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Clear auth cookie after deletion.
+    res.cookie("jwt", "", {
+      httpOnly: true,
+      expires: new Date(0),
+    });
+
+    return res.status(200).json({ message: "Account deleted" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });

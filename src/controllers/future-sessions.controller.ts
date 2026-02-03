@@ -1,11 +1,20 @@
 import type { Request, Response } from "express";
-import { getAuthUserId, getRequiredString, parseNumber } from "../helpers/helperFunctions.js";
+import {
+  getAuthUserId,
+  getBlockedUserIds,
+  getFriendIdsForUser,
+  getRequiredString,
+  isBlockedBetween,
+  parseNumber,
+} from "../helpers/helperFunctions.js";
 import { database } from "../db/db.js";
 import { futureSessionComments, futureSessions, users } from '../db/schema.js'
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 
 const SPORT_OPTIONS = ["kitesurfing", "wingfoiling", "windsurfing", "surfing"];
+const VISIBILITY_OPTIONS = ["public", "friends", "private", "custom"] as const;
+type PostVisibility = (typeof VISIBILITY_OPTIONS)[number];
 type Sport = (typeof SPORT_OPTIONS)[number];
 
 type SessionForm = {
@@ -17,6 +26,8 @@ type SessionForm = {
   location: string;
   latitude: number | null;
   longitude: number | null;
+  visibility: PostVisibility;
+  allowedViewerIds: string[] | null;
 };
 
 /**
@@ -35,6 +46,94 @@ function parseTime(value: unknown): Date | null {
   if (!value) return null;
   const parsed = new Date(String(value));
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Parse a visibility value or default to public.
+ */
+function parseVisibility(value: unknown): PostVisibility {
+  if (typeof value !== "string") return "public";
+  const parsed = value.trim().toLowerCase();
+  return VISIBILITY_OPTIONS.includes(parsed as PostVisibility)
+    ? (parsed as PostVisibility)
+    : "public";
+}
+
+/**
+ * Normalize allowed viewer ids into a string array.
+ */
+function parseAllowedViewers(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Normalize stored allowed viewer ids into a string array.
+ */
+function normalizeAllowedViewerIds(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string");
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[{}]/g, "").trim();
+    if (!cleaned) return [];
+    return cleaned.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  return [];
+}
+
+/**
+ * Check if a post is visible to a viewer based on visibility rules.
+ */
+function canViewPost(
+  post: { userId?: string; visibility?: string; allowedViewerIds?: string[] | null },
+  viewerId: string,
+  friendIds: Set<string>
+) {
+  if (post.userId === viewerId) return true;
+
+  const visibility = (post.visibility ?? "public") as PostVisibility;
+  if (visibility === "public") return true;
+  if (visibility === "private") return false;
+  if (visibility === "friends") {
+    return post.userId ? friendIds.has(post.userId) : false;
+  }
+  if (visibility === "custom") {
+    const allowed = Array.isArray(post.allowedViewerIds)
+      ? post.allowedViewerIds
+      : [];
+    return allowed.includes(viewerId);
+  }
+  return false;
+}
+
+/**
+ * Load a post and check if the viewer can see it.
+ * Returns the post when visible, otherwise null.
+ */
+async function getVisiblePostForViewer(postId: string, viewerId: string) {
+  const rows = await database
+    .select()
+    .from(futureSessions)
+    .where(eq(futureSessions.id, postId))
+    .limit(1);
+
+  const post = rows[0];
+  if (!post) return null;
+
+  if (await isBlockedBetween(viewerId, post.userId)) {
+    return null;
+  }
+
+  const friendIds = await getFriendIdsForUser(viewerId);
+  const friendSet = new Set(friendIds);
+
+  return canViewPost(post, viewerId, friendSet) ? post : null;
 }
 
 /**
@@ -77,6 +176,13 @@ export async function postFutureSession(req: Request, res: Response) {
       return res.status(400).json({ message: "Invalid longitude value" });
     }
 
+    const visibility = parseVisibility(req.body?.visibility);
+    const allowedViewerIds = parseAllowedViewers(req.body?.allowedViewerIds);
+
+    if (visibility === "custom" && allowedViewerIds.length === 0) {
+      return res.status(400).json({ message: "allowedViewerIds is required for custom visibility" });
+    }
+
     const session: SessionForm = {
       id: String(Date.now()),
       userId,
@@ -86,11 +192,13 @@ export async function postFutureSession(req: Request, res: Response) {
       location,
       latitude,
       longitude,
+      visibility,
+      allowedViewerIds: visibility === "custom" ? allowedViewerIds : null,
     };
 
     const id = randomUUID();
     
-    //Strore the request into Friend Request table
+    // Store the future session post.
     await database.insert(futureSessions).values({
       id,
       userId: userId,
@@ -100,6 +208,8 @@ export async function postFutureSession(req: Request, res: Response) {
       spotId,
       latitude,
       longitude,
+      visibility,
+      allowedViewerIds: visibility === "custom" ? allowedViewerIds : null,
     });
 
     return res.status(201).json({ session });
@@ -121,6 +231,13 @@ export async function listPosts(req: Request, res: Response) {
 
     const paramUserId = typeof req.params.userId === "string" ? req.params.userId.trim() : "";
     const targetUserId = paramUserId || authUserId;
+
+    if (targetUserId !== authUserId) {
+      // Do not expose posts when users are blocked from each other.
+      if (await isBlockedBetween(authUserId, targetUserId)) {
+        return res.status(403).json({ message: "Not allowed to view posts" });
+      }
+    }
     
     const posts = await database
       .select()
@@ -128,7 +245,19 @@ export async function listPosts(req: Request, res: Response) {
       .where(eq(futureSessions.userId, targetUserId))
       .orderBy(asc(futureSessions.time));
 
-    return res.status(200).json({ posts });
+    // Owners can always see their own posts.
+    if (targetUserId === authUserId) {
+      return res.status(200).json({ posts });
+    }
+
+    // Filter posts by visibility rules for non-owners.
+    const friendIds = await getFriendIdsForUser(authUserId);
+    const friendSet = new Set(friendIds);
+    const filtered = posts.filter((post) =>
+      canViewPost(post, authUserId, friendSet)
+    );
+
+    return res.status(200).json({ posts: filtered });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Server error" }); 
@@ -173,7 +302,20 @@ export async function listPostsAtSpot(req: Request, res: Response) {
       )
       .orderBy(asc(futureSessions.time));
 
-    return res.status(200).json({ posts });
+    const blockedIds = await getBlockedUserIds(authUserId);
+    const blockedSet = new Set(blockedIds);
+    const friendIds = await getFriendIdsForUser(authUserId);
+    const friendSet = new Set(friendIds);
+
+    // Filter out blocked users and non-visible posts.
+    const filtered = posts.filter(({ futureSessions }) => {
+      if (futureSessions?.userId && blockedSet.has(futureSessions.userId)) {
+        return false;
+      }
+      return canViewPost(futureSessions, authUserId, friendSet);
+    });
+
+    return res.status(200).json({ posts: filtered });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Server error" });
@@ -221,6 +363,12 @@ export async function addComment(req: Request, res: Response) {
     const postId = typeof req.params.id === "string" ? req.params.id.trim() : "";
     if (!postId) return res.status(400).json({ message: "Session id required" });
 
+    // Ensure the user can view the post before commenting.
+    const visiblePost = await getVisiblePostForViewer(postId, userId);
+    if (!visiblePost) {
+      return res.status(403).json({ message: "Not allowed to comment on this post" });
+    }
+
     const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
     if (!body) return res.status(400).json({ message: "Comment body required" });
 
@@ -252,6 +400,12 @@ export async function displayComments(req: Request, res: Response) {
 
     const postId = typeof req.params.id === "string" ? req.params.id.trim() : "";
     if (!postId) return res.status(400).json({ message: "Session id required" });
+
+    // Ensure the user can view the post before showing comments.
+    const visiblePost = await getVisiblePostForViewer(postId, userId);
+    if (!visiblePost) {
+      return res.status(403).json({ message: "Not allowed to view comments" });
+    }
 
     const comments = await database
       .select({
@@ -359,6 +513,8 @@ export async function listNearbySessions(req: Request, res: Response) {
         "FutureSession"."latitude",
         "FutureSession"."longitude",
         "FutureSession"."notes",
+        "FutureSession"."visibility",
+        "FutureSession"."allowedViewerIds",
         "FutureSession"."createdAt",
         "FutureSession"."updatedAt"
       FROM "FutureSession"
@@ -377,8 +533,33 @@ export async function listNearbySessions(req: Request, res: Response) {
       ORDER BY "FutureSession"."time" ASC
     `);
 
-    const posts = (result as { rows?: unknown[] }).rows ?? [];
-    return res.status(200).json({ posts });
+    const posts = (result as { rows?: any[] }).rows ?? [];
+
+    const blockedIds = await getBlockedUserIds(userId);
+    const blockedSet = new Set(blockedIds);
+    const friendIds = await getFriendIdsForUser(userId);
+    const friendSet = new Set(friendIds);
+
+    // Filter out blocked users and non-visible posts.
+    const filtered = posts.filter((post) => {
+      if (post?.userId && blockedSet.has(post.userId)) {
+        return false;
+      }
+
+      const allowedViewerIds = normalizeAllowedViewerIds(post.allowedViewerIds);
+
+      return canViewPost(
+        {
+          userId: post.userId,
+          visibility: post.visibility,
+          allowedViewerIds,
+        },
+        userId,
+        friendSet
+      );
+    });
+
+    return res.status(200).json({ posts: filtered });
 
   } catch (e) {
     console.error(e);
