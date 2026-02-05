@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
+import { ilike } from "drizzle-orm";
 import { database } from "../db/db.js";
 import { spots } from "../db/schema.js";
 import { getAuthUserId, getRequiredString, parseNumber } from "../helpers/helperFunctions.js";
@@ -76,3 +77,39 @@ export async function displaySpots(req: Request, res: Response) {
   }
 }
 
+/**
+ * Search global spots by name and/or type.
+ * Uses a partial match for name/type and returns a small list for autosuggest.
+ */
+export async function searchSpots(req: Request, res: Response) {
+  try {
+    const rawQuery = typeof req.query.q === "string" ? req.query.q.trim() : "";
+
+    if (!rawQuery) {
+      return res.status(400).json({ message: "q is required" });
+    }
+
+    // Means if user types 'bay', the query will accept 
+    // bayview, sandy bay, the bay area etc
+    const like = `%${rawQuery}%`;
+
+    // Querying the DB for a spot
+    const results = await database
+      .select({
+        id: spots.id,
+        name: spots.name,
+        type: spots.type,
+        latitude: spots.latitude,
+        longitude: spots.longitude,
+        description: spots.description,
+      })
+      .from(spots)
+      .where(ilike(spots.name, like))
+      .limit(20);
+
+    return res.status(200).json({ spots: results });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
