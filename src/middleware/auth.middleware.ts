@@ -42,8 +42,6 @@ export  const authMiddleware = async (req: Request, res: Response, next: NextFun
       .where(eq(users.id, decoded.sub))
       .limit(1);
 
-      console.log("Found user:", user); 
-
     if (!user || user.length === 0) {
       res.status(401).json({ error: "user no longer exists"});
       return;

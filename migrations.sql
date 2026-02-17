@@ -86,6 +86,16 @@ CREATE INDEX IF NOT EXISTS "Spot_type_idx" ON "Spot" (type);
 CREATE INDEX IF NOT EXISTS "Spot_createdBy_idx" ON "Spot" ("createdBy");
 
 /**
+* Add basic wind direction + tidal fields to spots 07/02/2026
+**/
+ALTER TABLE IF EXISTS "Spot"
+  ADD COLUMN IF NOT EXISTS "windDirStart" double precision;
+ALTER TABLE IF EXISTS "Spot"
+  ADD COLUMN IF NOT EXISTS "windDirEnd" double precision;
+ALTER TABLE IF EXISTS "Spot"
+  ADD COLUMN IF NOT EXISTS "isTidal" boolean;
+
+/**
 * Add spotId to future sessions (nullable) 20/01/2026
 **/
 ALTER TABLE IF EXISTS "FutureSession"

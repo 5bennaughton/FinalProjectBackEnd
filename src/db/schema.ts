@@ -1,4 +1,4 @@
-import { doublePrecision, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * Table for the users, deals with registraion/login and auth
@@ -46,6 +46,10 @@ export const spots = pgTable("Spot", {
   latitude: doublePrecision("latitude").notNull(),
   longitude: doublePrecision("longitude").notNull(),
   description: text("description"),
+  // Optional wind/tide metadata for the spot (basic version).
+  windDirStart: doublePrecision("windDirStart"),
+  windDirEnd: doublePrecision("windDirEnd"),
+  isTidal: boolean("isTidal"),
   createdBy: text("createdBy")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
