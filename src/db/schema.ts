@@ -50,6 +50,9 @@ export const spots = pgTable("Spot", {
   windDirStart: doublePrecision("windDirStart"),
   windDirEnd: doublePrecision("windDirEnd"),
   isTidal: boolean("isTidal"),
+  // Optional tide settings used by future kiteability checks.
+  tidePreference: text("tidePreference"), // high | low 
+  tideWindowHours: doublePrecision("tideWindowHours"),
   createdBy: text("createdBy")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),

@@ -14,6 +14,8 @@ type SpotPayload = {
   windDirStart?: number | null;
   windDirEnd?: number | null;
   isTidal?: boolean | null;
+  tidePreference?: "high" | "low" | null;
+  tideWindowHours?: number | null;
 };
 
 /**
@@ -98,7 +100,39 @@ export async function createSpot(req: Request, res: Response) {
       if (raw === "false") isTidal = false;
     }
 
+    /**
+     * Optional tide settings for future "kiteable" checks.
+     * Allowed values are intentionally small and explicit.
+     */
+    let tidePreference: "high" | "low" | null = null;
+
+    if (typeof req.body?.tidePreference === "string") {
+      const raw = req.body.tidePreference.trim().toLowerCase();
+
+      if (raw === "high" || raw === "low") {
+        tidePreference = raw;
+      } else if (raw) {
+        return res.status(400).json({ message: "tidePreference must be high, low" });
+      }
+    }
+
+    const tideWindowHoursRaw = req.body?.tideWindowHours;
+    const tideWindowHours = parseNumber(tideWindowHoursRaw);
+
+    if (
+      tideWindowHoursRaw !== undefined &&
+      tideWindowHoursRaw !== null &&
+      tideWindowHoursRaw !== "" &&
+      tideWindowHours === null
+    ) {
+      return res.status(400).json({ message: "tideWindowHours must be a number" });
+    }
+    if (tideWindowHours !== null && tideWindowHours < 0) {
+      return res.status(400).json({ message: "tideWindowHours must be 0 or greater" });
+    }
+
     const id = randomUUID();
+    
     const payload: SpotPayload = {
       name,
       type,
@@ -108,6 +142,8 @@ export async function createSpot(req: Request, res: Response) {
       windDirStart,
       windDirEnd,
       isTidal,
+      tidePreference,
+      tideWindowHours,
     };
 
     await database.insert(spots).values({
@@ -165,6 +201,8 @@ export async function searchSpots(req: Request, res: Response) {
         windDirStart: spots.windDirStart,
         windDirEnd: spots.windDirEnd,
         isTidal: spots.isTidal,
+        tidePreference: spots.tidePreference,
+        tideWindowHours: spots.tideWindowHours,
       })
       .from(spots)
       .where(ilike(spots.name, like))

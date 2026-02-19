@@ -139,3 +139,12 @@ CREATE TABLE IF NOT EXISTS "UserBlock" (
 
 CREATE INDEX IF NOT EXISTS "UserBlock_blockerId_idx" ON "UserBlock" ("blockerId");
 CREATE INDEX IF NOT EXISTS "UserBlock_blockedId_idx" ON "UserBlock" ("blockedId");
+
+/**
+* Add kiteability configuration fields to spots 18/02/2026
+* Keep these nullable so older spots continue to work.
+**/
+ALTER TABLE IF EXISTS "Spot"
+  ADD COLUMN IF NOT EXISTS "tidePreference" text;
+ALTER TABLE IF EXISTS "Spot"
+  ADD COLUMN IF NOT EXISTS "tideWindowHours" double precision;
