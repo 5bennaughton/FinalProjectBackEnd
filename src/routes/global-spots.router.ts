@@ -4,6 +4,7 @@ import {
   createSpot,
   deleteSpot,
   displaySpots,
+  getSpotKiteableForecast,
   searchSpots,
 } from "../controllers/global-spots.controller.js";
 
@@ -13,6 +14,7 @@ router.use(authMiddleware);
 router.post("/add-spot", createSpot);
 router.get("/display-spots", displaySpots);
 router.get("/search", searchSpots);
+router.get("/:id/kiteable-forecast", getSpotKiteableForecast);
 router.delete("/delete-spot/:id", deleteSpot);
 
 export default router;

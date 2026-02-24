@@ -18,6 +18,108 @@ type SpotPayload = {
   tideWindowHours?: number | null;
 };
 
+const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+const minimumWindKnots = 12;
+const maxWindKnots = 40;
+type DirectionMode = "clockwise" | "anticlockwise";
+
+/**
+ * Reads direction mode from query params and falls back to shortest-arc mode.
+ */
+function parseDirectionMode(raw: unknown): DirectionMode | undefined {
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim().toLowerCase();
+  if (value === "clockwise") return "clockwise";
+  if (value === "anticlockwise") {
+    return "anticlockwise";
+  }
+  return undefined;
+}
+
+/**
+ * Returns clockwise distance on a 0-359 circle.
+ */
+function clockwiseDistance(to: number, from: number) {
+  return (to - from + 360) % 360;
+}
+
+/**
+ * Pull hourly wind values for the next N hours for one coordinate pair.
+ */
+async function fetchHourlyWind(
+  latitude: number,
+  longitude: number,
+  hours: number
+) {
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    hourly: "wind_speed_10m,wind_direction_10m",
+    forecast_hours: String(hours),
+    wind_speed_unit: "kn",
+    timezone: "auto",
+  });
+
+  const response = await fetch(`${OPEN_METEO_FORECAST_URL}?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Weather API error (${response.status})`);
+  }
+
+  const data = await response.json();
+
+  const times = Array.isArray(data?.hourly?.time) ? data.hourly.time : null;
+
+  const speeds = Array.isArray(data?.hourly?.wind_speed_10m)
+    ? data.hourly.wind_speed_10m
+    : null;
+
+  const directions = Array.isArray(data?.hourly?.wind_direction_10m)
+    ? data.hourly.wind_direction_10m
+    : null;
+
+  if (!times || !speeds || !directions) {
+    throw new Error("Weather API returned incomplete hourly wind data");
+  }
+
+  return { times, speeds, directions };
+}
+
+/**
+ * Checks whether a direction is inside the computed arc
+ * Mode can be clockwise, or anticlockwise
+ * @param mode - defaulted to clockwise
+ */
+function isDirectionInRange(
+  windDirection: number,
+  start: number,
+  end: number,
+  mode: DirectionMode = "clockwise"
+) {
+  const normalize = (angle: number) => ((angle % 360) + 360) % 360;
+
+  const cleanedDirection = normalize(windDirection);
+  const cleanedStart = normalize(start);
+  const cleanedEnd = normalize(end);
+
+  // Gets the allowed arc and compared for exmaple
+  // Start = 270, End = 100 => ((270 - 100) + 360) % 360 = 190 
+  // Now Start == 270 windDirection == 300 => ((300 - 270) + 360) % 360 = 30
+  // 30 <= 190 return true
+  if (mode === "clockwise") {
+    const clockwiseSpan = clockwiseDistance(cleanedEnd, cleanedStart);
+    const clockwiseFromStart = clockwiseDistance(cleanedDirection, cleanedStart);
+    return clockwiseFromStart <= clockwiseSpan;
+  }
+
+  if (mode === "anticlockwise") {
+    const antiClockwiseSpan = clockwiseDistance(cleanedStart, cleanedEnd);
+    const antiClockwiseFromStart = clockwiseDistance(cleanedStart, cleanedDirection);
+    return antiClockwiseFromStart <= antiClockwiseSpan;
+  }
+
+  return false;
+}
+
 /**
  * Create a new global spot for the authenticated user.
  */
@@ -237,6 +339,134 @@ export async function deleteSpot(req: Request, res: Response) {
     }
 
     return res.status(200).json({ message: "Spot deleted" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
+ * Check hourly kiteable status for a spot for the next number of hours.
+ */
+export async function getSpotKiteableForecast(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const spotId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!spotId) {
+      return res.status(400).json({ message: "Spot id is required" });
+    }
+
+    const directionMode = parseDirectionMode(req.query.directionMode);
+    const rawHours = typeof req.query.hours === "string" ? req.query.hours.trim() : "";
+    const parsedHours = rawHours ? Number.parseInt(rawHours, 10) : 42;
+
+    // Keep API calls bounded in this version.
+    const hours = Number.isFinite(parsedHours)
+      ? Math.min(72, Math.max(1, parsedHours))
+      : 42;
+
+    const found = await database
+      .select({
+        id: spots.id,
+        name: spots.name,
+        latitude: spots.latitude,
+        longitude: spots.longitude,
+        windDirStart: spots.windDirStart,
+        windDirEnd: spots.windDirEnd,
+        isTidal: spots.isTidal,
+      })
+      .from(spots)
+      .where(eq(spots.id, spotId))
+      .limit(1);
+
+    const spot = found[0];
+
+    if (!spot) {
+      return res.status(404).json({ message: "Spot not found" });
+    }
+
+    if (spot.windDirStart === null || spot.windDirEnd === null) {
+      return res.status(400).json({
+        message: "Spot wind direction range is not configured",
+      });
+    }
+
+    let hourly;
+    try {
+      hourly = await fetchHourlyWind(spot.latitude, spot.longitude, hours);
+    } catch (error) {
+      console.error(error);
+      return res.status(502).json({ message: "Failed to fetch weather forecast" });
+    }
+
+    // Counting the length of array so we know for future if we loop it
+    const count = Math.min(
+      hourly.times.length,
+      hourly.speeds.length,
+      hourly.directions.length
+    );
+
+    const forecast: Array<{
+      time: string;
+      speedKn: number;
+      directionDeg: number;
+      directionOk: boolean;
+      speedOk: boolean;
+      tideOk: boolean;
+      kiteable: boolean;
+    }> = [];
+
+    // Looping the hourly forcast and computes kiteablity for each hour
+    for (let index = 0; index < count; index += 1) {
+      const time = String(hourly.times[index]);
+      const speedKnots = Number(hourly.speeds[index]);
+      const directionDegrees = Number(hourly.directions[index]);
+
+      if (!Number.isFinite(speedKnots) || !Number.isFinite(directionDegrees)) {
+        continue;
+      }
+
+      const directionOk = isDirectionInRange(
+        directionDegrees,
+        spot.windDirStart,
+        spot.windDirEnd,
+        directionMode
+      );
+      const speedOk = speedKnots >= minimumWindKnots && speedKnots <= maxWindKnots;
+      const tideOk = true;
+
+      // Add an item to end of forcast array with the following values below
+      forecast.push({
+        time,
+        speedKn: Number(speedKnots.toFixed(1)),
+        directionDeg: Math.round(directionDegrees),
+        directionOk,
+        speedOk,
+        tideOk,
+        kiteable: directionOk && speedOk && tideOk,
+      });
+    }
+
+    // Counts how many hours in the next 42 hours are kitable
+    const kiteableHours = forecast.filter((hour) => hour.kiteable).length;
+
+    return res.status(200).json({
+      spotId: spot.id,
+      spotName: spot.name,
+      requestedHours: hours,
+      kiteableHours,
+      forecast,
+      thresholds: {
+        minWindKn: minimumWindKnots,
+        maxWindKn: maxWindKnots,
+        windDirStart: spot.windDirStart,
+        windDirEnd: spot.windDirEnd,
+        directionMode,
+      },
+      note: spot.isTidal ? "Tide is not checked in this version." : null,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
