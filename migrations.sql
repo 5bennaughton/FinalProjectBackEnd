@@ -148,3 +148,20 @@ ALTER TABLE IF EXISTS "Spot"
   ADD COLUMN IF NOT EXISTS "tidePreference" text;
 ALTER TABLE IF EXISTS "Spot"
   ADD COLUMN IF NOT EXISTS "tideWindowHours" double precision;
+
+/**
+* This is the table that stores per-user star ratings for spots 24/02/2026
+**/
+CREATE TABLE IF NOT EXISTS "SpotRating" (
+  id text PRIMARY KEY,
+  "spotId" text NOT NULL REFERENCES "Spot"(id) ON DELETE CASCADE,
+  "userId" text NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+  rating integer NOT NULL,
+  "createdAt" timestamp(3) NOT NULL DEFAULT now(),
+  "updatedAt" timestamp(3) NOT NULL DEFAULT now(),
+  UNIQUE ("spotId", "userId"),
+  CHECK (rating >= 1 AND rating <= 5)
+);
+
+CREATE INDEX IF NOT EXISTS "SpotRating_spotId_idx" ON "SpotRating" ("spotId");
+CREATE INDEX IF NOT EXISTS "SpotRating_userId_idx" ON "SpotRating" ("userId");

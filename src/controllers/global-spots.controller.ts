@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, ilike, sql } from "drizzle-orm";
 import { database } from "../db/db.js";
-import { spots } from "../db/schema.js";
+import { spotRatings, spots } from "../db/schema.js";
 import { getAuthUserId, getRequiredString, parseNumber } from "../helpers/helperFunctions.js";
 
 type SpotPayload = {
@@ -19,9 +19,16 @@ type SpotPayload = {
 };
 
 const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-const minimumWindKnots = 12;
+const minimumWindKnots = 15;
 const maxWindKnots = 40;
 type DirectionMode = "clockwise" | "anticlockwise";
+
+type SpotRatingSummary = {
+  spotId: string;
+  averageRating: number | null;
+  ratingCount: number;
+  myRating: number | null;
+};
 
 /**
  * Reads direction mode from query params and falls back to shortest-arc mode.
@@ -118,6 +125,58 @@ function isDirectionInRange(
   }
 
   return false;
+}
+
+/**
+ * Read and validate a star rating value (1..5 integer).
+ */
+function parseStarRating(value: unknown) {
+  const parsed = parseNumber(value);
+  if (parsed === null) return null;
+  if (!Number.isInteger(parsed)) return null;
+  if (parsed < 1 || parsed > 5) return null;
+  return parsed;
+}
+
+/**
+ * Load aggregate + current-user rating for one spot.
+ */
+async function loadSpotRatingSummary(
+  spotId: string,
+  userId: string
+): Promise<SpotRatingSummary> {
+  // Gets the average of all ratings on the database for a certian x spot
+  const aggregateRows = await database
+    .select({
+      averageRating: sql<string | null>`avg(${spotRatings.rating})`,
+      ratingCount: sql<number>`count(${spotRatings.id})::int`,
+    })
+    .from(spotRatings)
+    .where(eq(spotRatings.spotId, spotId))
+    .limit(1);
+
+  const aggregate = aggregateRows[0];
+
+  const myRows = await database
+    .select({ rating: spotRatings.rating })
+    .from(spotRatings)
+    .where(and(eq(spotRatings.spotId, spotId), eq(spotRatings.userId, userId)))
+    .limit(1);
+
+  const averageRaw = aggregate?.averageRating ?? null;
+
+  const averageNumber =
+    averageRaw === null ? null : Number.parseFloat(String(averageRaw));
+
+  const hasAverage =
+    typeof averageNumber === "number" && Number.isFinite(averageNumber);
+
+  return {
+    spotId,
+    averageRating: hasAverage ? Number(averageNumber.toFixed(1)) : null,
+    ratingCount: Number(aggregate?.ratingCount ?? 0),
+    myRating: myRows[0]?.rating ?? null,
+  };
 }
 
 /**
@@ -341,6 +400,91 @@ export async function deleteSpot(req: Request, res: Response) {
     return res.status(200).json({ message: "Spot deleted" });
   } catch (error) {
     console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
+ * Return aggregate star rating plus the current user's rating for a spot.
+ */
+export async function getSpotRating(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const spotId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!spotId) {
+      return res.status(400).json({ message: "Spot id is required" });
+    }
+
+    const found = await database
+      .select({ id: spots.id })
+      .from(spots)
+      .where(eq(spots.id, spotId))
+      .limit(1);
+
+    if (found.length === 0) {
+      return res.status(404).json({ message: "Spot not found" });
+    }
+
+    const summary = await loadSpotRatingSummary(spotId, userId);
+    return res.status(200).json(summary);
+  } catch (error) {
+
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
+ * Create or update a user's star rating for a spot.
+ */
+export async function upsertSpotRating(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const spotId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!spotId) {
+      return res.status(400).json({ message: "Spot id is required" });
+    }
+
+    const rating = parseStarRating(req.body?.rating);
+    if (rating === null) {
+      return res
+        .status(400)
+        .json({ message: "rating must be an integer between 1 and 5" });
+    }
+
+    const found = await database
+      .select({ id: spots.id })
+      .from(spots)
+      .where(eq(spots.id, spotId))
+      .limit(1);
+
+    if (found.length === 0) {
+      return res.status(404).json({ message: "Spot not found" });
+    }
+
+    await database
+      .insert(spotRatings)
+      .values({
+        id: randomUUID(),
+        spotId,
+        userId,
+        rating,
+      })
+      // Try to INSERT, if conflict run an UPDATE instead
+      .onConflictDoUpdate({
+        target: [spotRatings.spotId, spotRatings.userId],
+        set: {
+          rating,
+          updatedAt: new Date(),
+        },
+      });
+
+    const summary = await loadSpotRatingSummary(spotId, userId);
+    return res.status(200).json(summary);
+  } catch (error) {
     return res.status(500).json({ message: "Server error" });
   }
 }

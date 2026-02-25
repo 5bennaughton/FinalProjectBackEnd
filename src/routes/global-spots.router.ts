@@ -4,8 +4,10 @@ import {
   createSpot,
   deleteSpot,
   displaySpots,
+  getSpotRating,
   getSpotKiteableForecast,
   searchSpots,
+  upsertSpotRating,
 } from "../controllers/global-spots.controller.js";
 
 const router = express.Router();
@@ -15,6 +17,8 @@ router.post("/add-spot", createSpot);
 router.get("/display-spots", displaySpots);
 router.get("/search", searchSpots);
 router.get("/:id/kiteable-forecast", getSpotKiteableForecast);
+router.get("/:id/rating", getSpotRating);
+router.post("/:id/rating", upsertSpotRating);
 router.delete("/delete-spot/:id", deleteSpot);
 
 export default router;

@@ -1,4 +1,4 @@
-import { boolean, doublePrecision, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * Table for the users, deals with registraion/login and auth
@@ -56,6 +56,27 @@ export const spots = pgTable("Spot", {
   createdBy: text("createdBy")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updatedAt", { precision: 3 })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Table for per-user star ratings on spots.
+ * Each user can keep one rating value per spot and update it later.
+ */
+export const spotRatings = pgTable("SpotRating", {
+  id: text("id").primaryKey(),
+  spotId: text("spotId")
+    .notNull()
+    .references(() => spots.id, { onDelete: "cascade" }),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(),
   createdAt: timestamp("createdAt", { precision: 3 })
     .notNull()
     .defaultNow(),
