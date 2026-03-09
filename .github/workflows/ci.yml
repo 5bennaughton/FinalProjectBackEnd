@@ -40,11 +40,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Apply SQL migrations
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d backend_project_test -f migrations.sql
-
       - name: TypeScript build check
         run: npm run build
 
