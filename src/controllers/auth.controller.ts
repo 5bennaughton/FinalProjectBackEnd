@@ -1,10 +1,13 @@
 import { eq } from "drizzle-orm";
 import { database } from "../db/db.js";
-import { users } from "../db/schema.js"
+import { users } from "../db/schema.js";
 import bcrypt from "bcrypt";
 import { generateToken } from "../utils/generateToken.js";
 import type { Request, Response } from "express";
-import { getAuthUserId } from "../helpers/helperFunctions.js";
+import {
+  getAuthUserId,
+  getFriendIdsForUser,
+} from "../helpers/helperFunctions.js";
 
 /**
  * Register a new user and hash their password.
@@ -13,8 +16,10 @@ import { getAuthUserId } from "../helpers/helperFunctions.js";
 export const register = async (req: Request, res: Response) => {
   const { name, email, password } = req.body ?? {};
 
-    if (!name || !email || !password) {
-    return res.status(400).json({ message: "Name, email, and password are required" });
+  if (!name || !email || !password) {
+    return res
+      .status(400)
+      .json({ message: "Name, email, and password are required" });
   }
 
   const userExists = await database
@@ -25,21 +30,21 @@ export const register = async (req: Request, res: Response) => {
 
   if (userExists.length > 0) {
     return res.status(400).json({ message: "Email already exists" });
-  };
+  }
 
-  // Hash password 
-  const salt = await bcrypt.genSalt(10)
+  // Hash password
+  const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
-  //create user 
+  //create user
   await database.insert(users).values({
     id: crypto.randomUUID(),
     name,
     email,
-    password: hashedPassword
-  })
+    password: hashedPassword,
+  });
 
-  res.status(201).json({ message: `Thanks for signing up ${name}` })
+  res.status(201).json({ message: `Thanks for signing up ${name}` });
 };
 
 /**
@@ -51,7 +56,9 @@ export const login = async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      return res
+        .status(400)
+        .json({ message: "Email and password are required" });
     }
 
     // Find user by email
@@ -98,7 +105,7 @@ export const login = async (req: Request, res: Response) => {
         avatarUrl: user.avatarUrl ?? null,
         profileVisibility: user.profileVisibility ?? "public",
       },
-       token: token,
+      token: token,
     });
   } catch (err) {
     console.error(err);
@@ -118,8 +125,8 @@ export const logout = async (req: Request, res: Response) => {
   res.status(200).json({
     status: "success",
     message: "Logged out successfully",
-  })
-}
+  });
+};
 
 /**
  * Return basic profile data for the authenticated user.
@@ -146,11 +153,16 @@ export const me = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Keep it simple: derive a friend count from accepted friend ids.
+    const friendIds = await getFriendIdsForUser(userId);
+    const friendCount = new Set(friendIds).size;
+
     return res.status(200).json({
       name: user.name,
       bio: user.bio ?? null,
       avatarUrl: user.avatarUrl ?? null,
       profileVisibility: user.profileVisibility ?? "public",
+      friendCount,
     });
   } catch (err) {
     console.error(err);
@@ -205,12 +217,18 @@ export const updateProfile = async (req: Request, res: Response) => {
 
     if (req.body?.profileVisibility !== undefined) {
       if (typeof req.body.profileVisibility !== "string") {
-        return res.status(400).json({ message: "Profile visibility must be a string" });
+        return res
+          .status(400)
+          .json({ message: "Profile visibility must be a string" });
       }
       const trimmed = req.body.profileVisibility.trim().toLowerCase();
       const allowed = ["public", "friends", "private"];
       if (!allowed.includes(trimmed)) {
-        return res.status(400).json({ message: "Profile visibility must be public, friends, or private" });
+        return res
+          .status(400)
+          .json({
+            message: "Profile visibility must be public, friends, or private",
+          });
       }
       updates.profileVisibility = trimmed;
     }

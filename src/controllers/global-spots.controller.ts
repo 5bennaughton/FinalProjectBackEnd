@@ -609,7 +609,6 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
         windDirEnd: spot.windDirEnd,
         directionMode,
       },
-      note: spot.isTidal ? "Tide is not checked in this version." : null,
     });
   } catch (error) {
     console.error(error);

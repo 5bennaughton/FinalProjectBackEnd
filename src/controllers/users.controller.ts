@@ -17,7 +17,8 @@ export async function getUserProfile(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const targetUserId = typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    const targetUserId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
     if (!targetUserId) {
       return res.status(400).json({ message: "User id is required" });
     }
@@ -41,12 +42,17 @@ export async function getUserProfile(req: Request, res: Response) {
         return res.status(404).json({ message: "User not found" });
       }
 
+      // Count accepted friends for the profile owner.
+      const selfFriendIds = await getFriendIdsForUser(userId);
+      const friendCount = new Set(selfFriendIds).size;
+
       return res.status(200).json({
         id: profile.id,
         name: profile.name,
         bio: profile.bio ?? null,
         avatarUrl: profile.avatarUrl ?? null,
         profileVisibility: profile.profileVisibility ?? "public",
+        friendCount,
       });
     }
 
@@ -78,17 +84,22 @@ export async function getUserProfile(req: Request, res: Response) {
     }
 
     if (visibility === "friends") {
-      const friendIds = await getFriendIdsForUser(userId);
-      if (!friendIds.includes(targetUserId)) {
+      const viewerFriendIds = await getFriendIdsForUser(userId);
+      if (!viewerFriendIds.includes(targetUserId)) {
         return res.status(403).json({ message: "Profile not available" });
       }
     }
+
+    // Count accepted friends for the viewed user.
+    const targetFriendIds = await getFriendIdsForUser(targetUserId);
+    const friendCount = new Set(targetFriendIds).size;
 
     return res.status(200).json({
       id: profile.id,
       name: profile.name,
       bio: profile.bio ?? null,
       avatarUrl: profile.avatarUrl ?? null,
+      friendCount,
     });
   } catch (err) {
     console.error(err);
@@ -104,7 +115,8 @@ export async function blockUser(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const targetUserId = typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    const targetUserId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
     if (!targetUserId) {
       return res.status(400).json({ message: "User id is required" });
     }
@@ -128,7 +140,10 @@ export async function blockUser(req: Request, res: Response) {
       .select({ id: userBlocks.id })
       .from(userBlocks)
       .where(
-        and(eq(userBlocks.blockerId, userId), eq(userBlocks.blockedId, targetUserId))
+        and(
+          eq(userBlocks.blockerId, userId),
+          eq(userBlocks.blockedId, targetUserId)
+        )
       )
       .limit(1);
 
@@ -159,7 +174,8 @@ export async function unblockUser(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const targetUserId = typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    const targetUserId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
     if (!targetUserId) {
       return res.status(400).json({ message: "User id is required" });
     }
@@ -167,7 +183,10 @@ export async function unblockUser(req: Request, res: Response) {
     const deleted = await database
       .delete(userBlocks)
       .where(
-        and(eq(userBlocks.blockerId, userId), eq(userBlocks.blockedId, targetUserId))
+        and(
+          eq(userBlocks.blockerId, userId),
+          eq(userBlocks.blockedId, targetUserId)
+        )
       )
       .returning({ id: userBlocks.id });
 

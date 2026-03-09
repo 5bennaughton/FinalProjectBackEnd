@@ -3,7 +3,10 @@ import type { Request, Response } from "express";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { database } from "../db/db.js";
 import { friendRequests, users } from "../db/schema.js";
-import { getAuthUserId, getFriendIdsForUser } from "../helpers/helperFunctions.js";
+import {
+  getAuthUserId,
+  getFriendIdsForUser,
+} from "../helpers/helperFunctions.js";
 
 const FRIEND_STATUS = {
   PENDING: "pending",
@@ -123,7 +126,9 @@ export async function createFriendRequest(req: Request, res: Response) {
     }
 
     if (addresseeId === userId) {
-      return res.status(400).json({ message: "Cannot send a friend request to yourself" });
+      return res
+        .status(400)
+        .json({ message: "Cannot send a friend request to yourself" });
     }
 
     if (!(await userExists(addresseeId))) {
@@ -138,10 +143,11 @@ export async function createFriendRequest(req: Request, res: Response) {
       if (status === FRIEND_STATUS.ACCEPTED) {
         return res.status(409).json({ message: "You are already friends" });
       }
-      return res.status(409).json({ message: "Friend request already pending" });
+      return res
+        .status(409)
+        .json({ message: "Friend request already pending" });
     }
 
-    
     const id = randomUUID();
 
     //Strore the request into Friend Request table
@@ -188,8 +194,16 @@ export async function listFriendRequests(req: Request, res: Response) {
             );
 
     const requests = await database
-      .select()
+      .select({
+        id: friendRequests.id,
+        requesterId: friendRequests.requesterId,
+        addresseeId: friendRequests.addresseeId,
+        status: friendRequests.status,
+        requesterName: users.name,
+        requesterEmail: users.email,
+      })
       .from(friendRequests)
+      .innerJoin(users, eq(users.id, friendRequests.requesterId))
       .where(and(eq(friendRequests.status, FRIEND_STATUS.PENDING), scope))
       .limit(50);
 
@@ -217,7 +231,9 @@ export async function respondToFriendRequest(req: Request, res: Response) {
 
     const action = getString(req.body?.action);
     if (action !== "accept" && action !== "decline") {
-      return res.status(400).json({ message: "Action must be accept or decline" });
+      return res
+        .status(400)
+        .json({ message: "Action must be accept or decline" });
     }
 
     const request = await getRequestById(requestId);
@@ -226,7 +242,9 @@ export async function respondToFriendRequest(req: Request, res: Response) {
     }
 
     if (request.addresseeId !== userId) {
-      return res.status(403).json({ message: "Not allowed to respond to this request" });
+      return res
+        .status(403)
+        .json({ message: "Not allowed to respond to this request" });
     }
 
     if (request.status !== FRIEND_STATUS.PENDING) {
@@ -244,9 +262,10 @@ export async function respondToFriendRequest(req: Request, res: Response) {
       return res.status(200).json({ request: updated[0] });
     }
 
-    await database.delete(friendRequests).where(eq(friendRequests.id, requestId));
+    await database
+      .delete(friendRequests)
+      .where(eq(friendRequests.id, requestId));
     return res.status(200).json({ message: "Friend request declined" });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });
@@ -275,7 +294,7 @@ export async function listFriends(req: Request, res: Response) {
       .where(inArray(users.id, uniqueIds));
 
     return res.status(200).json({ friends });
-
+    
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });
