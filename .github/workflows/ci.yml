@@ -7,8 +7,26 @@ on:
       - main
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: backend_project_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d backend_project_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/backend_project_test
+      JWT_SECRET: test-secret-key
+      NODE_ENV: test
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,5 +40,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Apply SQL migrations
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d backend_project_test -f migrations.sql
+
       - name: TypeScript build check
         run: npm run build
+
+      - name: Run integration tests
+        run: npm test

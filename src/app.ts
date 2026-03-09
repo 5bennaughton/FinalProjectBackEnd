@@ -1,0 +1,35 @@
+import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Import Routes
+import authStravaRoutes from "./routes/oauth.routes.js";
+import sessionsRoutes from "./routes/session.routes.js";
+import authRoutes from "./routes/auth.routes.js";
+import friendRoutes from "./routes/friend.routes.js";
+import futureSessionRoutes from "./routes/future-sessions.router.js";
+import feedRoutes from "./routes/feed.routes.js";
+import geoRoutes from "./routes/geo.routes.js";
+import globalSpotsRoutes from "./routes/global-spots.router.js";
+import uploadRoutes from "./routes/uploads.routes.js";
+import usersRoutes from "./routes/users.routes.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// API Routes
+app.use("/oauth", authStravaRoutes);
+app.use("/sessions", sessionsRoutes);
+app.use("/auth", authRoutes);
+app.use("/friends", friendRoutes);
+app.use("/future-sessions", futureSessionRoutes);
+app.use("/feed", feedRoutes);
+app.use("/geo", geoRoutes);
+app.use("/global-spots", globalSpotsRoutes);
+app.use("/uploads", uploadRoutes);
+app.use("/users", usersRoutes);
+app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
