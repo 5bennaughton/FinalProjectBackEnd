@@ -14,7 +14,7 @@ if (!process.env.DATABASE_URL) {
 const { database, pool } = await import("../src/db/db.js");
 
 beforeEach(async () => {
-  // Minimal schema bootstrap for the first integration test.
+  // schema for first integration test.
   await database.execute(sql`
     CREATE TABLE IF NOT EXISTS "User" (
       "id" text PRIMARY KEY,
@@ -28,7 +28,7 @@ beforeEach(async () => {
     )
   `);
 
-  // Reset data between tests to keep cases isolated and deterministic.
+  // Reset data between tests to keep cases isolated
   await database.execute(sql`
     TRUNCATE TABLE "User" RESTART IDENTITY CASCADE
   `);
