@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { and, eq, ilike, sql } from "drizzle-orm";
 import { database } from "../db/db.js";
 import { spotRatings, spots } from "../db/schema.js";
-import { getAuthUserId, getRequiredString, parseNumber } from "../helpers/helperFunctions.js";
+import {
+  getAuthUserId,
+  getRequiredString,
+  parseNumber,
+} from "../helpers/helperFunctions.js";
 
 type SpotPayload = {
   name: string;
@@ -14,14 +18,21 @@ type SpotPayload = {
   windDirStart?: number | null;
   windDirEnd?: number | null;
   isTidal?: boolean | null;
-  tidePreference?: "high" | "low" | null;
+  tidePreference?: string | null;
   tideWindowHours?: number | null;
 };
 
 const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+const OPEN_METEO_MARINE_URL = "https://marine-api.open-meteo.com/v1/marine";
 const minimumWindKnots = 15;
 const maxWindKnots = 40;
+const openMeteoMaxRetries = 2;
 type DirectionMode = "clockwise" | "anticlockwise";
+
+type TideEvent = {
+  time: Date;
+  kind: "high" | "low";
+};
 
 type SpotRatingSummary = {
   spotId: string;
@@ -41,6 +52,52 @@ function parseDirectionMode(raw: unknown): DirectionMode | undefined {
     return "anticlockwise";
   }
   return undefined;
+}
+
+/**
+ * Normalize older stored tide values into the current simple "high"/"low" model.
+ * This keeps forecast checks working even if older rows used before_/after_ labels.
+ */
+function parseStoredTidePreference(value: unknown): "high" | "low" | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().toLowerCase();
+
+  if (cleaned === "high" || cleaned === "low") {
+    return cleaned;
+  }
+
+  // Backward compatible with older encoded values.
+  if (
+    cleaned === "before_high" ||
+    cleaned === "after_high" ||
+    cleaned === "before_low" ||
+    cleaned === "after_low"
+  ) {
+    return cleaned.endsWith("_high") ? "high" : "low";
+  }
+
+  return null;
+}
+
+/**
+ * Fetches the data of the tides
+ */
+async function fetchOpenMeteoJson(url: string) {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= openMeteoMaxRetries; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Weather API error (${response.status})`);
+      }
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
 
 /**
@@ -67,12 +124,9 @@ async function fetchHourlyWind(
     timezone: "auto",
   });
 
-  const response = await fetch(`${OPEN_METEO_FORECAST_URL}?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`Weather API error (${response.status})`);
-  }
-
-  const data = await response.json();
+  const data = await fetchOpenMeteoJson(
+    `${OPEN_METEO_FORECAST_URL}?${params.toString()}`
+  );
 
   const times = Array.isArray(data?.hourly?.time) ? data.hourly.time : null;
 
@@ -89,6 +143,134 @@ async function fetchHourlyWind(
   }
 
   return { times, speeds, directions };
+}
+
+/**
+ * Pull hourly mean sea-level values and use that as the tide signal.
+ * Open-Meteo does not return high/low tide times here, so we
+ * get them from the rise/fall in these hourly heights.
+ */
+async function fetchHourlyTideHeights(
+  latitude: number,
+  longitude: number,
+  hours: number
+) {
+  const params = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    hourly: "sea_level_height_msl",
+    forecast_hours: String(hours),
+    timezone: "auto",
+  });
+
+  const data = await fetchOpenMeteoJson(
+    `${OPEN_METEO_MARINE_URL}?${params.toString()}`
+  );
+
+  const times = Array.isArray(data?.hourly?.time) ? data.hourly.time : null;
+  const levels = Array.isArray(data?.hourly?.sea_level_height_msl)
+    ? data.hourly.sea_level_height_msl
+    : null;
+
+  if (!times || !levels) {
+    throw new Error("Tide API returned incomplete hourly data");
+  }
+
+  return { times, levels };
+}
+
+/**
+ * Find highs/lows tides from hourly sea-level samples.
+ */
+function extractTideEvents(times: unknown[], levels: unknown[]) {
+  const events: TideEvent[] = [];
+  // Only compare entries that exist in both arrays.
+  const count = Math.min(times.length, levels.length);
+
+  if (count < 2) return events;
+
+  // Include boundary checks so a tide event at the first/last hour is not missed.
+  const firstLevel = Number(levels[0]);
+  const secondLevel = Number(levels[1]);
+  const firstTime = new Date(String(times[0]));
+  if (
+    Number.isFinite(firstLevel) &&
+    Number.isFinite(secondLevel) &&
+    !Number.isNaN(firstTime.getTime())
+  ) {
+    if (firstLevel < secondLevel) {
+      events.push({ time: firstTime, kind: "low" });
+    } else if (firstLevel > secondLevel) {
+      events.push({ time: firstTime, kind: "high" });
+    }
+  }
+
+  // looping through the tides to make sure that 
+  for (let i = 1; i < count - 1; i += 1) {
+    const prev = Number(levels[i - 1]);
+    const current = Number(levels[i]);
+    const next = Number(levels[i + 1]);
+
+    // Skip invalid sea-level values instead of failing the whole calculation.
+    if (
+      !Number.isFinite(prev) ||
+      !Number.isFinite(current) ||
+      !Number.isFinite(next)
+    ) {
+      continue;
+    }
+
+    const eventTime = new Date(String(times[i]));
+    if (Number.isNaN(eventTime.getTime())) {
+      continue;
+    }
+
+    // A local maximum is treated as high tide.
+    if (current >= prev && current >= next) {
+      events.push({ time: eventTime, kind: "high" });
+      continue;
+    }
+
+    // A local minimum is treated as low tide.
+    if (current <= prev && current <= next) {
+      events.push({ time: eventTime, kind: "low" });
+    }
+  }
+
+  const penultimateLevel = Number(levels[count - 2]);
+  const lastLevel = Number(levels[count - 1]);
+  const lastTime = new Date(String(times[count - 1]));
+  if (
+    Number.isFinite(lastLevel) &&
+    Number.isFinite(penultimateLevel) &&
+    !Number.isNaN(lastTime.getTime())
+  ) {
+    // The last point has no next value, so compare it to the previous hour.
+    if (lastLevel < penultimateLevel) {
+      events.push({ time: lastTime, kind: "low" });
+    } else if (lastLevel > penultimateLevel) {
+      events.push({ time: lastTime, kind: "high" });
+    }
+  }
+
+  return events;
+}
+
+function isHourInsideTideWindow(
+  hourTime: Date,
+  events: TideEvent[],
+  preference: "high" | "low",
+  windowHours: number
+) {
+  // A forecast hour is considered tide-compatible when it lands within the
+  // configured +/- window around any matching high- or low-tide event.
+  return events.some((event) => {
+    if (event.kind !== preference) return false;
+
+    const hoursDiff =
+      (hourTime.getTime() - event.time.getTime()) / (1000 * 60 * 60);
+    return Math.abs(hoursDiff) <= windowHours;
+  });
 }
 
 /**
@@ -109,18 +291,24 @@ function isDirectionInRange(
   const cleanedEnd = normalize(end);
 
   // Gets the allowed arc and compared for exmaple
-  // Start = 270, End = 100 => ((270 - 100) + 360) % 360 = 190 
+  // Start = 270, End = 100 => ((270 - 100) + 360) % 360 = 190
   // Now Start == 270 windDirection == 300 => ((300 - 270) + 360) % 360 = 30
   // 30 <= 190 return true
   if (mode === "clockwise") {
     const clockwiseSpan = clockwiseDistance(cleanedEnd, cleanedStart);
-    const clockwiseFromStart = clockwiseDistance(cleanedDirection, cleanedStart);
+    const clockwiseFromStart = clockwiseDistance(
+      cleanedDirection,
+      cleanedStart
+    );
     return clockwiseFromStart <= clockwiseSpan;
   }
 
   if (mode === "anticlockwise") {
     const antiClockwiseSpan = clockwiseDistance(cleanedStart, cleanedEnd);
-    const antiClockwiseFromStart = clockwiseDistance(cleanedStart, cleanedDirection);
+    const antiClockwiseFromStart = clockwiseDistance(
+      cleanedStart,
+      cleanedDirection
+    );
     return antiClockwiseFromStart <= antiClockwiseSpan;
   }
 
@@ -236,19 +424,25 @@ export async function createSpot(req: Request, res: Response) {
     }
 
     // If one direction is set, require the other as well.
-    if ((windDirStart !== null && windDirEnd === null) || (windDirStart === null && windDirEnd !== null)) {
-      return res.status(400).json({ message: "windDirStart and windDirEnd must both be provided" });
+    if (
+      (windDirStart !== null && windDirEnd === null) ||
+      (windDirStart === null && windDirEnd !== null)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "windDirStart and windDirEnd must both be provided" });
     }
 
     // If provided, direction values must be within 0-359.
-    if (
-      windDirStart !== null &&
-      (windDirStart < 0 || windDirStart > 359)
-    ) {
-      return res.status(400).json({ message: "windDirStart must be between 0 and 359" });
+    if (windDirStart !== null && (windDirStart < 0 || windDirStart > 359)) {
+      return res
+        .status(400)
+        .json({ message: "windDirStart must be between 0 and 359" });
     }
     if (windDirEnd !== null && (windDirEnd < 0 || windDirEnd > 359)) {
-      return res.status(400).json({ message: "windDirEnd must be between 0 and 359" });
+      return res
+        .status(400)
+        .json({ message: "windDirEnd must be between 0 and 359" });
     }
 
     // Basic tidal flag (true/false). If missing, it stays null.
@@ -273,7 +467,9 @@ export async function createSpot(req: Request, res: Response) {
       if (raw === "high" || raw === "low") {
         tidePreference = raw;
       } else if (raw) {
-        return res.status(400).json({ message: "tidePreference must be high, low" });
+        return res
+          .status(400)
+          .json({ message: "tidePreference must be high, low" });
       }
     }
 
@@ -286,14 +482,36 @@ export async function createSpot(req: Request, res: Response) {
       tideWindowHoursRaw !== "" &&
       tideWindowHours === null
     ) {
-      return res.status(400).json({ message: "tideWindowHours must be a number" });
+      return res
+        .status(400)
+        .json({ message: "tideWindowHours must be a number" });
     }
     if (tideWindowHours !== null && tideWindowHours < 0) {
-      return res.status(400).json({ message: "tideWindowHours must be 0 or greater" });
+      return res
+        .status(400)
+        .json({ message: "tideWindowHours must be 0 or greater" });
     }
 
+    if (isTidal) {
+      if (!tidePreference) {
+        return res
+          .status(400)
+          .json({ message: "tidePreference is required for tidal spots" });
+      }
+
+      if (tideWindowHours === null) {
+        return res
+          .status(400)
+          .json({ message: "tideWindowHours is required for tidal spots" });
+      }
+    }
+
+    // it says if spot is tidal, keep tide settings, else store as null
+    const normalizedTidePreference = isTidal ? tidePreference : null;
+    const normalizedTideWindowHours = isTidal ? tideWindowHours : null;
+
     const id = randomUUID();
-    
+
     const payload: SpotPayload = {
       name,
       type,
@@ -303,8 +521,8 @@ export async function createSpot(req: Request, res: Response) {
       windDirStart,
       windDirEnd,
       isTidal,
-      tidePreference,
-      tideWindowHours,
+      tidePreference: normalizedTidePreference,
+      tideWindowHours: normalizedTideWindowHours,
     };
 
     await database.insert(spots).values({
@@ -346,7 +564,7 @@ export async function searchSpots(req: Request, res: Response) {
       return res.status(400).json({ message: "q is required" });
     }
 
-    // Means if user types 'bay', the query will accept 
+    // Means if user types 'bay', the query will accept
     // bayview, sandy bay, the bay area etc
     const like = `%${rawQuery}%`;
 
@@ -385,8 +603,10 @@ export async function deleteSpot(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId = typeof req.params.id === "string" ? req.params.id.trim() : "";
-    if (!spotId) return res.status(400).json({ message: "Spot id is required" });
+    const spotId =
+      typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!spotId)
+      return res.status(400).json({ message: "Spot id is required" });
 
     const deleted = await database
       .delete(spots)
@@ -412,7 +632,8 @@ export async function getSpotRating(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    const spotId =
+      typeof req.params.id === "string" ? req.params.id.trim() : "";
     if (!spotId) {
       return res.status(400).json({ message: "Spot id is required" });
     }
@@ -430,7 +651,6 @@ export async function getSpotRating(req: Request, res: Response) {
     const summary = await loadSpotRatingSummary(spotId, userId);
     return res.status(200).json(summary);
   } catch (error) {
-
     return res.status(500).json({ message: "Server error" });
   }
 }
@@ -443,7 +663,8 @@ export async function upsertSpotRating(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    const spotId =
+      typeof req.params.id === "string" ? req.params.id.trim() : "";
     if (!spotId) {
       return res.status(400).json({ message: "Spot id is required" });
     }
@@ -497,13 +718,15 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId = typeof req.params.id === "string" ? req.params.id.trim() : "";
+    const spotId =
+      typeof req.params.id === "string" ? req.params.id.trim() : "";
     if (!spotId) {
       return res.status(400).json({ message: "Spot id is required" });
     }
 
     const directionMode = parseDirectionMode(req.query.directionMode);
-    const rawHours = typeof req.query.hours === "string" ? req.query.hours.trim() : "";
+    const rawHours =
+      typeof req.query.hours === "string" ? req.query.hours.trim() : "";
     const parsedHours = rawHours ? Number.parseInt(rawHours, 10) : 42;
 
     // Keep API calls bounded in this version.
@@ -520,6 +743,8 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
         windDirStart: spots.windDirStart,
         windDirEnd: spots.windDirEnd,
         isTidal: spots.isTidal,
+        tidePreference: spots.tidePreference,
+        tideWindowHours: spots.tideWindowHours,
       })
       .from(spots)
       .where(eq(spots.id, spotId))
@@ -540,9 +765,62 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
     let hourly;
     try {
       hourly = await fetchHourlyWind(spot.latitude, spot.longitude, hours);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      return res.status(502).json({ message: "Failed to fetch weather forecast" });
+      const code =
+        typeof error?.cause?.code === "string" ? error.cause.code : null;
+      return res.status(502).json({
+        message:
+          code === "UND_ERR_CONNECT_TIMEOUT"
+            ? "Weather provider timed out. Please try again."
+            : "Failed to fetch weather forecast",
+      });
+    }
+
+    const spotIsTidal = spot.isTidal === true;
+    // Read the stored tide settings once up front so the per-hour loop only
+    // has to evaluate the tide rule, not repeatedly normalize raw DB values.
+    const tidePreference = parseStoredTidePreference(spot.tidePreference);
+    const tideWindowHours =
+      typeof spot.tideWindowHours === "number" &&
+      Number.isFinite(spot.tideWindowHours)
+        ? spot.tideWindowHours
+        : null;
+
+    const tideProvider = spotIsTidal ? "open-meteo" : null;
+    let tideEvents: TideEvent[] = [];
+
+    if (spotIsTidal) {
+      // Tidal spots require both a preferred tide type and a time window.
+      // If either is missing, the spot itself is not sufficiently configured
+      // to produce a trustworthy kiteability forecast.
+      if (!tidePreference || tideWindowHours === null) {
+        return res.status(400).json({
+          message: "Spot tidal settings are incomplete",
+        });
+      }
+
+      let tideHourly;
+      try {
+        tideHourly = await fetchHourlyTideHeights(
+          spot.latitude,
+          spot.longitude,
+          hours
+        );
+      } catch (error: any) {
+        console.error(error);
+        const code =
+          typeof error?.cause?.code === "string" ? error.cause.code : null;
+        return res.status(502).json({
+          message:
+            code === "UND_ERR_CONNECT_TIMEOUT"
+              ? "Tide provider timed out. Please try again."
+              : "Failed to fetch tide forecast",
+        });
+      }
+
+      // Convert raw hourly sea-level heights into inferred high/low tide events.
+      tideEvents = extractTideEvents(tideHourly.times, tideHourly.levels);
     }
 
     // Counting the length of array so we know for future if we loop it
@@ -578,8 +856,31 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
         spot.windDirEnd,
         directionMode
       );
-      const speedOk = speedKnots >= minimumWindKnots && speedKnots <= maxWindKnots;
-      const tideOk = true;
+      const speedOk =
+        speedKnots >= minimumWindKnots && speedKnots <= maxWindKnots;
+      let tideOk = true;
+
+      if (spotIsTidal) {
+        const hourTime = new Date(time);
+        if (
+          !Number.isNaN(hourTime.getTime()) &&
+          tidePreference &&
+          tideWindowHours !== null
+        ) {
+          // For tidal spots, the hour only counts when it lands inside the
+          // allowed window around the preferred high/low tide event.
+          tideOk = isHourInsideTideWindow(
+            hourTime,
+            tideEvents,
+            tidePreference,
+            tideWindowHours
+          );
+        } else {
+          // Invalid forecast timestamps, or missing normalized tide settings,
+          // make the tidal rule fail closed rather than accidentally passing.
+          tideOk = false;
+        }
+      }
 
       // Add an item to end of forcast array with the following values below
       forecast.push({
@@ -608,6 +909,10 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
         windDirStart: spot.windDirStart,
         windDirEnd: spot.windDirEnd,
         directionMode,
+        isTidal: spotIsTidal,
+        tidePreference,
+        tideWindowHours,
+        tideProvider,
       },
     });
   } catch (error) {
