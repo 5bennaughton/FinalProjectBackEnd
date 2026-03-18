@@ -8,6 +8,10 @@ import {
   getRequiredString,
   parseNumber,
 } from "../helpers/helperFunctions.js";
+import {
+  buildSpotHourlyForecast,
+  type DirectionMode,
+} from "../services/kiteability.service.js";
 
 type SpotPayload = {
   name: string;
@@ -20,18 +24,6 @@ type SpotPayload = {
   isTidal?: boolean | null;
   tidePreference?: string | null;
   tideWindowHours?: number | null;
-};
-
-const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-const OPEN_METEO_MARINE_URL = "https://marine-api.open-meteo.com/v1/marine";
-const minimumWindKnots = 15;
-const maxWindKnots = 40;
-const openMeteoMaxRetries = 2;
-type DirectionMode = "clockwise" | "anticlockwise";
-
-type TideEvent = {
-  time: Date;
-  kind: "high" | "low";
 };
 
 type SpotRatingSummary = {
@@ -52,267 +44,6 @@ function parseDirectionMode(raw: unknown): DirectionMode | undefined {
     return "anticlockwise";
   }
   return undefined;
-}
-
-/**
- * Normalize older stored tide values into the current simple "high"/"low" model.
- * This keeps forecast checks working even if older rows used before_/after_ labels.
- */
-function parseStoredTidePreference(value: unknown): "high" | "low" | null {
-  if (typeof value !== "string") return null;
-  const cleaned = value.trim().toLowerCase();
-
-  if (cleaned === "high" || cleaned === "low") {
-    return cleaned;
-  }
-
-  // Backward compatible with older encoded values.
-  if (
-    cleaned === "before_high" ||
-    cleaned === "after_high" ||
-    cleaned === "before_low" ||
-    cleaned === "after_low"
-  ) {
-    return cleaned.endsWith("_high") ? "high" : "low";
-  }
-
-  return null;
-}
-
-/**
- * Fetches the data of the tides
- */
-async function fetchOpenMeteoJson(url: string) {
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt <= openMeteoMaxRetries; attempt += 1) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Weather API error (${response.status})`);
-      }
-      return await response.json();
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError;
-}
-
-/**
- * Returns clockwise distance on a 0-359 circle.
- */
-function clockwiseDistance(to: number, from: number) {
-  return (to - from + 360) % 360;
-}
-
-/**
- * Pull hourly wind values for the next N hours for one coordinate pair.
- */
-async function fetchHourlyWind(
-  latitude: number,
-  longitude: number,
-  hours: number
-) {
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    hourly: "wind_speed_10m,wind_direction_10m",
-    forecast_hours: String(hours),
-    wind_speed_unit: "kn",
-    timezone: "auto",
-  });
-
-  const data = await fetchOpenMeteoJson(
-    `${OPEN_METEO_FORECAST_URL}?${params.toString()}`
-  );
-
-  const times = Array.isArray(data?.hourly?.time) ? data.hourly.time : null;
-
-  const speeds = Array.isArray(data?.hourly?.wind_speed_10m)
-    ? data.hourly.wind_speed_10m
-    : null;
-
-  const directions = Array.isArray(data?.hourly?.wind_direction_10m)
-    ? data.hourly.wind_direction_10m
-    : null;
-
-  if (!times || !speeds || !directions) {
-    throw new Error("Weather API returned incomplete hourly wind data");
-  }
-
-  return { times, speeds, directions };
-}
-
-/**
- * Pull hourly mean sea-level values and use that as the tide signal.
- * Open-Meteo does not return high/low tide times here, so we
- * get them from the rise/fall in these hourly heights.
- */
-async function fetchHourlyTideHeights(
-  latitude: number,
-  longitude: number,
-  hours: number
-) {
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    hourly: "sea_level_height_msl",
-    forecast_hours: String(hours),
-    timezone: "auto",
-  });
-
-  const data = await fetchOpenMeteoJson(
-    `${OPEN_METEO_MARINE_URL}?${params.toString()}`
-  );
-
-  const times = Array.isArray(data?.hourly?.time) ? data.hourly.time : null;
-  const levels = Array.isArray(data?.hourly?.sea_level_height_msl)
-    ? data.hourly.sea_level_height_msl
-    : null;
-
-  if (!times || !levels) {
-    throw new Error("Tide API returned incomplete hourly data");
-  }
-
-  return { times, levels };
-}
-
-/**
- * Find highs/lows tides from hourly sea-level samples.
- */
-function extractTideEvents(times: unknown[], levels: unknown[]) {
-  const events: TideEvent[] = [];
-  // Only compare entries that exist in both arrays.
-  const count = Math.min(times.length, levels.length);
-
-  if (count < 2) return events;
-
-  // Include boundary checks so a tide event at the first/last hour is not missed.
-  const firstLevel = Number(levels[0]);
-  const secondLevel = Number(levels[1]);
-  const firstTime = new Date(String(times[0]));
-  if (
-    Number.isFinite(firstLevel) &&
-    Number.isFinite(secondLevel) &&
-    !Number.isNaN(firstTime.getTime())
-  ) {
-    if (firstLevel < secondLevel) {
-      events.push({ time: firstTime, kind: "low" });
-    } else if (firstLevel > secondLevel) {
-      events.push({ time: firstTime, kind: "high" });
-    }
-  }
-
-  // looping through the tides to make sure that 
-  for (let i = 1; i < count - 1; i += 1) {
-    const prev = Number(levels[i - 1]);
-    const current = Number(levels[i]);
-    const next = Number(levels[i + 1]);
-
-    // Skip invalid sea-level values instead of failing the whole calculation.
-    if (
-      !Number.isFinite(prev) ||
-      !Number.isFinite(current) ||
-      !Number.isFinite(next)
-    ) {
-      continue;
-    }
-
-    const eventTime = new Date(String(times[i]));
-    if (Number.isNaN(eventTime.getTime())) {
-      continue;
-    }
-
-    // A local maximum is treated as high tide.
-    if (current >= prev && current >= next) {
-      events.push({ time: eventTime, kind: "high" });
-      continue;
-    }
-
-    // A local minimum is treated as low tide.
-    if (current <= prev && current <= next) {
-      events.push({ time: eventTime, kind: "low" });
-    }
-  }
-
-  const penultimateLevel = Number(levels[count - 2]);
-  const lastLevel = Number(levels[count - 1]);
-  const lastTime = new Date(String(times[count - 1]));
-  if (
-    Number.isFinite(lastLevel) &&
-    Number.isFinite(penultimateLevel) &&
-    !Number.isNaN(lastTime.getTime())
-  ) {
-    // The last point has no next value, so compare it to the previous hour.
-    if (lastLevel < penultimateLevel) {
-      events.push({ time: lastTime, kind: "low" });
-    } else if (lastLevel > penultimateLevel) {
-      events.push({ time: lastTime, kind: "high" });
-    }
-  }
-
-  return events;
-}
-
-function isHourInsideTideWindow(
-  hourTime: Date,
-  events: TideEvent[],
-  preference: "high" | "low",
-  windowHours: number
-) {
-  // A forecast hour is considered tide-compatible when it lands within the
-  // configured +/- window around any matching high- or low-tide event.
-  return events.some((event) => {
-    if (event.kind !== preference) return false;
-
-    const hoursDiff =
-      (hourTime.getTime() - event.time.getTime()) / (1000 * 60 * 60);
-    return Math.abs(hoursDiff) <= windowHours;
-  });
-}
-
-/**
- * Checks whether a direction is inside the computed arc
- * Mode can be clockwise, or anticlockwise
- * @param mode - defaulted to clockwise
- */
-function isDirectionInRange(
-  windDirection: number,
-  start: number,
-  end: number,
-  mode: DirectionMode = "clockwise"
-) {
-  const normalize = (angle: number) => ((angle % 360) + 360) % 360;
-
-  const cleanedDirection = normalize(windDirection);
-  const cleanedStart = normalize(start);
-  const cleanedEnd = normalize(end);
-
-  // Gets the allowed arc and compared for exmaple
-  // Start = 270, End = 100 => ((270 - 100) + 360) % 360 = 190
-  // Now Start == 270 windDirection == 300 => ((300 - 270) + 360) % 360 = 30
-  // 30 <= 190 return true
-  if (mode === "clockwise") {
-    const clockwiseSpan = clockwiseDistance(cleanedEnd, cleanedStart);
-    const clockwiseFromStart = clockwiseDistance(
-      cleanedDirection,
-      cleanedStart
-    );
-    return clockwiseFromStart <= clockwiseSpan;
-  }
-
-  if (mode === "anticlockwise") {
-    const antiClockwiseSpan = clockwiseDistance(cleanedStart, cleanedEnd);
-    const antiClockwiseFromStart = clockwiseDistance(
-      cleanedStart,
-      cleanedDirection
-    );
-    return antiClockwiseFromStart <= antiClockwiseSpan;
-  }
-
-  return false;
 }
 
 /**
@@ -720,11 +451,13 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
 
     const spotId =
       typeof req.params.id === "string" ? req.params.id.trim() : "";
+      
     if (!spotId) {
       return res.status(400).json({ message: "Spot id is required" });
     }
 
     const directionMode = parseDirectionMode(req.query.directionMode);
+
     const rawHours =
       typeof req.query.hours === "string" ? req.query.hours.trim() : "";
     const parsedHours = rawHours ? Number.parseInt(rawHours, 10) : 42;
@@ -762,158 +495,58 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
       });
     }
 
-    let hourly;
-    try {
-      hourly = await fetchHourlyWind(spot.latitude, spot.longitude, hours);
-    } catch (error: any) {
-      console.error(error);
-      const code =
-        typeof error?.cause?.code === "string" ? error.cause.code : null;
-      return res.status(502).json({
-        message:
-          code === "UND_ERR_CONNECT_TIMEOUT"
-            ? "Weather provider timed out. Please try again."
-            : "Failed to fetch weather forecast",
-      });
-    }
+    if (spot.isTidal === true) {
+      const hasValidTidePreference =
+        typeof spot.tidePreference === "string" &&
+        spot.tidePreference.trim().length > 0;
 
-    const spotIsTidal = spot.isTidal === true;
-    // Read the stored tide settings once up front so the per-hour loop only
-    // has to evaluate the tide rule, not repeatedly normalize raw DB values.
-    const tidePreference = parseStoredTidePreference(spot.tidePreference);
-    const tideWindowHours =
-      typeof spot.tideWindowHours === "number" &&
-      Number.isFinite(spot.tideWindowHours)
-        ? spot.tideWindowHours
-        : null;
+      const hasValidTideWindow =
+        typeof spot.tideWindowHours === "number" &&
+        Number.isFinite(spot.tideWindowHours);
 
-    const tideProvider = spotIsTidal ? "open-meteo" : null;
-    let tideEvents: TideEvent[] = [];
-
-    if (spotIsTidal) {
-      // Tidal spots require both a preferred tide type and a time window.
-      // If either is missing, the spot itself is not sufficiently configured
-      // to produce a trustworthy kiteability forecast.
-      if (!tidePreference || tideWindowHours === null) {
+      if (!hasValidTidePreference || !hasValidTideWindow) {
         return res.status(400).json({
           message: "Spot tidal settings are incomplete",
         });
       }
-
-      let tideHourly;
-      try {
-        tideHourly = await fetchHourlyTideHeights(
-          spot.latitude,
-          spot.longitude,
-          hours
-        );
-      } catch (error: any) {
-        console.error(error);
-        const code =
-          typeof error?.cause?.code === "string" ? error.cause.code : null;
-        return res.status(502).json({
-          message:
-            code === "UND_ERR_CONNECT_TIMEOUT"
-              ? "Tide provider timed out. Please try again."
-              : "Failed to fetch tide forecast",
-        });
-      }
-
-      // Convert raw hourly sea-level heights into inferred high/low tide events.
-      tideEvents = extractTideEvents(tideHourly.times, tideHourly.levels);
     }
 
-    // Counting the length of array so we know for future if we loop it
-    const count = Math.min(
-      hourly.times.length,
-      hourly.speeds.length,
-      hourly.directions.length
-    );
+    let result;
+    try {
+      // Reuse the shared forecast builder so spot forecasts and session
+      // forecasts rely on the same kiteability rules.
+      result = await buildSpotHourlyForecast(spot, hours, directionMode);
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error ? error.message : "Failed to build forecast";
 
-    const forecast: Array<{
-      time: string;
-      speedKn: number;
-      directionDeg: number;
-      directionOk: boolean;
-      speedOk: boolean;
-      tideOk: boolean;
-      kiteable: boolean;
-    }> = [];
-
-    // Looping the hourly forcast and computes kiteablity for each hour
-    for (let index = 0; index < count; index += 1) {
-      const time = String(hourly.times[index]);
-      const speedKnots = Number(hourly.speeds[index]);
-      const directionDegrees = Number(hourly.directions[index]);
-
-      if (!Number.isFinite(speedKnots) || !Number.isFinite(directionDegrees)) {
-        continue;
+      if (message === "Tide API returned incomplete hourly data") {
+        return res.status(502).json({ message: "Failed to fetch tide forecast" });
       }
 
-      const directionOk = isDirectionInRange(
-        directionDegrees,
-        spot.windDirStart,
-        spot.windDirEnd,
-        directionMode
-      );
-      const speedOk =
-        speedKnots >= minimumWindKnots && speedKnots <= maxWindKnots;
-      let tideOk = true;
-
-      if (spotIsTidal) {
-        const hourTime = new Date(time);
-        if (
-          !Number.isNaN(hourTime.getTime()) &&
-          tidePreference &&
-          tideWindowHours !== null
-        ) {
-          // For tidal spots, the hour only counts when it lands inside the
-          // allowed window around the preferred high/low tide event.
-          tideOk = isHourInsideTideWindow(
-            hourTime,
-            tideEvents,
-            tidePreference,
-            tideWindowHours
-          );
-        } else {
-          // Invalid forecast timestamps, or missing normalized tide settings,
-          // make the tidal rule fail closed rather than accidentally passing.
-          tideOk = false;
-        }
+      if (message === "Weather API returned incomplete hourly wind data") {
+        return res.status(502).json({ message: "Failed to fetch weather forecast" });
       }
 
-      // Add an item to end of forcast array with the following values below
-      forecast.push({
-        time,
-        speedKn: Number(speedKnots.toFixed(1)),
-        directionDeg: Math.round(directionDegrees),
-        directionOk,
-        speedOk,
-        tideOk,
-        kiteable: directionOk && speedOk && tideOk,
+      if (message === "Spot tidal settings are incomplete") {
+        return res.status(400).json({ message });
+      }
+
+      return res.status(502).json({
+        message: message.toLowerCase().includes("tide")
+          ? "Failed to fetch tide forecast"
+          : "Failed to fetch weather forecast",
       });
     }
-
-    // Counts how many hours in the next 42 hours are kitable
-    const kiteableHours = forecast.filter((hour) => hour.kiteable).length;
 
     return res.status(200).json({
       spotId: spot.id,
       spotName: spot.name,
       requestedHours: hours,
-      kiteableHours,
-      forecast,
-      thresholds: {
-        minWindKn: minimumWindKnots,
-        maxWindKn: maxWindKnots,
-        windDirStart: spot.windDirStart,
-        windDirEnd: spot.windDirEnd,
-        directionMode,
-        isTidal: spotIsTidal,
-        tidePreference,
-        tideWindowHours,
-        tideProvider,
-      },
+      kiteableHours: result.kiteableHours,
+      forecast: result.forecast,
+      thresholds: result.thresholds,
     });
   } catch (error) {
     console.error(error);

@@ -9,6 +9,7 @@ import {
   displayComments,
   deleteComment,
   listNearbySessions,
+  getSessionKiteability,
 } from "../controllers/future-sessions.controller.js";
 
 const router = express.Router();
@@ -20,6 +21,7 @@ router.get("/list-posts/:userId", listPosts);
 router.get("/spot/:spotId", listPostsAtSpot);
 router.get("/nearby", listNearbySessions);
 router.delete("/delete:id", deleteFutureSession);
+router.get("/:id/kiteability", getSessionKiteability);
 router.post("/:id/add-comment", addComment);
 router.get("/:id/display-comments", displayComments);
 router.delete("/:id/delete-comment/:commentId", deleteComment);

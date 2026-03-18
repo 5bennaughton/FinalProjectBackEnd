@@ -8,14 +8,17 @@ import {
   parseNumber,
 } from "../helpers/helperFunctions.js";
 import { database } from "../db/db.js";
-import { futureSessionComments, futureSessions, users } from '../db/schema.js'
+import { futureSessionComments, futureSessions, spots, users } from '../db/schema.js'
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { buildSpotHourlyForecast } from "../services/kiteability.service.js";
 
 const SPORT_OPTIONS = ["kitesurfing", "wingfoiling", "windsurfing", "surfing"];
 const VISIBILITY_OPTIONS = ["public", "friends", "private", "custom"] as const;
 type PostVisibility = (typeof VISIBILITY_OPTIONS)[number];
 type Sport = (typeof SPORT_OPTIONS)[number];
+const sessionKiteabilityForecastWindowHours = 48;
+const sessionKiteabilityDurationHours = 2;
 
 type SessionForm = {
   id: string;
@@ -134,6 +137,115 @@ async function getVisiblePostForViewer(postId: string, viewerId: string) {
   const friendSet = new Set(friendIds);
 
   return canViewPost(post, viewerId, friendSet) ? post : null;
+}
+
+/**
+ * Check whether a session is kiteable or not.
+ */
+function getSessionKiteabilityAvailability(session: {
+  time: Date;
+  spotId?: string | null;
+}) {
+  if (!session.spotId) {
+    return {
+      eligible: false as const,
+    };
+  }
+
+  const sessionStart = new Date(session.time);
+  const now = new Date();
+  const hoursUntilStart =
+    (sessionStart.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  if (hoursUntilStart < 0) {
+    return {
+      eligible: false as const,
+    };
+  }
+
+  if (hoursUntilStart > sessionKiteabilityForecastWindowHours) {
+    return {
+      eligible: false as const,
+    };
+  }
+
+  return { eligible: true as const };
+}
+
+/**
+ * Return true when the linked spot has the wind and tide configuration
+ * required to evaluate kiteability for a session.
+ */
+function getSpotKiteabilityAvailability(spot: {
+  windDirStart: number | null;
+  windDirEnd: number | null;
+  isTidal: boolean | null;
+  tidePreference: string | null;
+  tideWindowHours: number | null;
+}) {
+  if (spot.windDirStart === null || spot.windDirEnd === null) {
+    return {
+      eligible: false as const,
+    };
+  }
+
+  if (spot.isTidal === true) {
+    const hasTidePreference =
+      typeof spot.tidePreference === "string" &&
+      spot.tidePreference.trim().length > 0;
+    const hasTideWindow =
+      typeof spot.tideWindowHours === "number" &&
+      Number.isFinite(spot.tideWindowHours);
+
+    if (!hasTidePreference || !hasTideWindow) {
+      return {
+        eligible: false as const,
+      };
+    }
+  }
+
+  return { eligible: true as const };
+}
+
+/**
+ * Evaluate the fixed two-hour window starting at the session time.
+ * A session counts as kiteable when at least one forecast hour passes.
+ */
+function evaluateSessionWindowForecast(
+  sessionStart: Date,
+  forecast: Array<{
+    time: string;
+    speedKn: number;
+    directionDeg: number;
+    directionOk: boolean;
+    speedOk: boolean;
+    tideOk: boolean;
+    kiteable: boolean;
+  }>
+) {
+  const sessionEnd = new Date(
+    sessionStart.getTime() + sessionKiteabilityDurationHours * 60 * 60 * 1000
+  );
+
+  // Keep only the forecast hours that fall inside the planned session window.
+  const windowForecast = forecast.filter((hour) => {
+    const hourTime = new Date(hour.time);
+    if (Number.isNaN(hourTime.getTime())) return false;
+
+    return hourTime >= sessionStart && hourTime < sessionEnd;
+  });
+
+  const kiteableHours = windowForecast.filter((hour) => hour.kiteable).length;
+
+  return {
+    sessionEnd,
+    windowForecast,
+    kiteableHours,
+    status:
+      kiteableHours > 0
+        ? ("kiteable" as const)
+        : ("not_kiteable" as const),
+  };
 }
 
 /**
@@ -563,6 +675,115 @@ export async function listNearbySessions(req: Request, res: Response) {
 
   } catch (e) {
     console.error(e);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
+ * Evaluate whether the next fixed two-hour window of a planned session has
+ * at least one kiteable forecast hour.
+ */
+export async function getSessionKiteability(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const sessionId =
+      typeof req.params.id === "string" ? req.params.id.trim() : "";
+    if (!sessionId) {
+      return res.status(400).json({ message: "Session id is required" });
+    }
+
+    // Reuse the existing privacy checks so only viewers who can see the
+    // session can also see the session kiteability result.
+    const session = await getVisiblePostForViewer(sessionId, userId);
+    if (!session) {
+      return res.status(404).json({
+        message: "Future session not found or not available",
+      });
+    }
+
+    const sessionAvailability = getSessionKiteabilityAvailability(session);
+    if (!sessionAvailability.eligible) {
+      return res.status(200).json({
+        eligible: false,
+        status: "unavailable",
+      });
+    }
+
+    const spot = await database
+      .select({
+        id: spots.id,
+        name: spots.name,
+        latitude: spots.latitude,
+        longitude: spots.longitude,
+        windDirStart: spots.windDirStart,
+        windDirEnd: spots.windDirEnd,
+        isTidal: spots.isTidal,
+        tidePreference: spots.tidePreference,
+        tideWindowHours: spots.tideWindowHours,
+      })
+      .from(spots)
+      .where(eq(spots.id, session.spotId as string))
+      .limit(1);
+
+    const linkedSpot = spot[0];
+    if (!linkedSpot) {
+      return res.status(200).json({
+        eligible: false,
+        status: "unavailable",
+      });
+    }
+
+    const spotAvailability = getSpotKiteabilityAvailability(linkedSpot);
+    if (!spotAvailability.eligible) {
+      return res.status(200).json({
+        eligible: false,
+        status: "unavailable",
+      });
+    }
+
+    const sessionStart = new Date(session.time);
+    const now = new Date();
+    const sessionEnd = new Date(
+      sessionStart.getTime() + sessionKiteabilityDurationHours * 60 * 60 * 1000
+    );
+    const hoursNeeded = Math.max(
+      1,
+      Math.ceil((sessionEnd.getTime() - now.getTime()) / (1000 * 60 * 60))
+    );
+
+    let forecastResult;
+    try {
+      // Reuse the exact same spot forecast rules that already power the
+      // spot details screen so session kiteability stays consistent.
+      forecastResult = await buildSpotHourlyForecast(linkedSpot, hoursNeeded);
+    } catch (error) {
+      console.error(error);
+      return res.status(502).json({
+        message: "Failed to fetch session kiteability forecast",
+      });
+    }
+
+    const windowResult = evaluateSessionWindowForecast(
+      sessionStart,
+      forecastResult.forecast
+    );
+
+    return res.status(200).json({
+      eligible: true,
+      status: windowResult.status,
+      sessionId: session.id,
+      spotId: linkedSpot.id,
+      spotName: linkedSpot.name,
+      windowStart: sessionStart.toISOString(),
+      windowEnd: windowResult.sessionEnd.toISOString(),
+      hoursChecked: windowResult.windowForecast.length,
+      kiteableHours: windowResult.kiteableHours,
+      windowForecast: windowResult.windowForecast,
+    });
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
 }
