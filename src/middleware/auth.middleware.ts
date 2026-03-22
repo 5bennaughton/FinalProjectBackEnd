@@ -37,7 +37,7 @@ export  const authMiddleware = async (req: Request, res: Response, next: NextFun
       exp: number;
     };
     const user = await database
-      .select({ id: users.id })
+      .select({ id: users.id, role: users.role })
       .from(users)
       .where(eq(users.id, decoded.sub))
       .limit(1);

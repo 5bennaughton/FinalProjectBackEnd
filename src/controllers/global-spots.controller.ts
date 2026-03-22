@@ -13,17 +13,22 @@ import {
   type DirectionMode,
 } from "../services/kiteability.service.js";
 
-type SpotPayload = {
+export type SpotPayload = {
   name: string;
   type: string;
   latitude: number;
   longitude: number;
   description: string | null;
-  windDirStart?: number | null;
-  windDirEnd?: number | null;
-  isTidal?: boolean | null;
-  tidePreference?: string | null;
-  tideWindowHours?: number | null;
+  windDirStart: number | null;
+  windDirEnd: number | null;
+  isTidal: boolean | null;
+  tidePreference: string | null;
+  tideWindowHours: number | null;
+};
+
+export type SpotRecord = SpotPayload & {
+  id: string;
+  createdBy: string;
 };
 
 type SpotRatingSummary = {
@@ -36,7 +41,7 @@ type SpotRatingSummary = {
 /**
  * Reads direction mode from query params and falls back to shortest-arc mode.
  */
-function parseDirectionMode(raw: unknown): DirectionMode | undefined {
+export function parseDirectionMode(raw: unknown): DirectionMode | undefined {
   if (typeof raw !== "string") return undefined;
   const value = raw.trim().toLowerCase();
   if (value === "clockwise") return "clockwise";
@@ -49,12 +54,253 @@ function parseDirectionMode(raw: unknown): DirectionMode | undefined {
 /**
  * Read and validate a star rating value (1..5 integer).
  */
-function parseStarRating(value: unknown) {
+export function parseStarRating(value: unknown) {
   const parsed = parseNumber(value);
   if (parsed === null) return null;
   if (!Number.isInteger(parsed)) return null;
   if (parsed < 1 || parsed > 5) return null;
   return parsed;
+}
+
+function getSpotId(req: Request, res: Response) {
+  const spotId =
+    typeof req.params.id === "string" ? req.params.id.trim() : "";
+  if (!spotId) {
+    res.status(400).json({ message: "Spot id is required" });
+    return null;
+  }
+  return spotId;
+}
+
+function parseBooleanInput(value: unknown): boolean | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const raw = value.trim().toLowerCase();
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+  }
+  return undefined;
+}
+
+export function parseSpotState(
+  body: Record<string, unknown> | undefined,
+  existing?: SpotRecord
+): { payload?: SpotPayload; changed?: boolean; message?: string } {
+  const source = body ?? {};
+  let changed = false;
+
+  const nameProvided = Object.prototype.hasOwnProperty.call(source, "name");
+  const name = nameProvided
+    ? getRequiredString(source.name)
+    : existing?.name ?? null;
+  if (nameProvided) {
+    changed = true;
+    if (!name) return { message: "Name is required" };
+  }
+  if (!existing && !name) return { message: "Name is required" };
+
+  const typeProvided = Object.prototype.hasOwnProperty.call(source, "type");
+  const type = typeProvided
+    ? getRequiredString(source.type)
+    : existing?.type ?? null;
+  if (typeProvided) {
+    changed = true;
+    if (!type) return { message: "Type is required" };
+  }
+  if (!existing && !type) return { message: "Type is required" };
+
+  const latitudeProvided =
+    Object.prototype.hasOwnProperty.call(source, "latitude") ||
+    Object.prototype.hasOwnProperty.call(source, "lat");
+  const latitudeRaw = source.latitude ?? source.lat;
+  const latitude = latitudeProvided
+    ? parseNumber(latitudeRaw)
+    : existing?.latitude ?? null;
+  if (latitudeProvided) {
+    changed = true;
+    if (latitude === null) return { message: "Latitude is required" };
+  }
+  if (!existing && latitude === null) {
+    return { message: "Latitude is required" };
+  }
+
+  const longitudeProvided =
+    Object.prototype.hasOwnProperty.call(source, "longitude") ||
+    Object.prototype.hasOwnProperty.call(source, "lon");
+  const longitudeRaw = source.longitude ?? source.lon;
+  const longitude = longitudeProvided
+    ? parseNumber(longitudeRaw)
+    : existing?.longitude ?? null;
+  if (longitudeProvided) {
+    changed = true;
+    if (longitude === null) return { message: "Longitude is required" };
+  }
+  if (!existing && longitude === null) {
+    return { message: "Longitude is required" };
+  }
+
+  let description = existing?.description ?? null;
+  if (Object.prototype.hasOwnProperty.call(source, "description")) {
+    changed = true;
+    if (
+      source.description !== null &&
+      source.description !== undefined &&
+      typeof source.description !== "string"
+    ) {
+      return { message: "Description must be a string" };
+    }
+    description =
+      typeof source.description === "string"
+        ? source.description.trim() || null
+        : null;
+  }
+
+  let windDirStart = existing?.windDirStart ?? null;
+  if (Object.prototype.hasOwnProperty.call(source, "windDirStart")) {
+    changed = true;
+    const raw = source.windDirStart;
+    const parsed = parseNumber(raw);
+    if (raw !== undefined && raw !== null && raw !== "" && parsed === null) {
+      return { message: "windDirStart must be a number" };
+    }
+    windDirStart = parsed;
+  }
+
+  let windDirEnd = existing?.windDirEnd ?? null;
+  if (Object.prototype.hasOwnProperty.call(source, "windDirEnd")) {
+    changed = true;
+    const raw = source.windDirEnd;
+    const parsed = parseNumber(raw);
+    if (raw !== undefined && raw !== null && raw !== "" && parsed === null) {
+      return { message: "windDirEnd must be a number" };
+    }
+    windDirEnd = parsed;
+  }
+
+  let isTidal = existing?.isTidal ?? null;
+  if (Object.prototype.hasOwnProperty.call(source, "isTidal")) {
+    changed = true;
+    const parsed = parseBooleanInput(source.isTidal);
+    if (parsed === undefined) {
+      return { message: "isTidal must be true or false" };
+    }
+    isTidal = parsed;
+  }
+
+  let tidePreference = existing?.tidePreference ?? null;
+  if (Object.prototype.hasOwnProperty.call(source, "tidePreference")) {
+    changed = true;
+    if (
+      source.tidePreference !== null &&
+      source.tidePreference !== undefined &&
+      typeof source.tidePreference !== "string"
+    ) {
+      return { message: "tidePreference must be high, low" };
+    }
+
+    const raw =
+      typeof source.tidePreference === "string"
+        ? source.tidePreference.trim().toLowerCase()
+        : "";
+
+    if (!raw) {
+      tidePreference = null;
+    } else if (raw === "high" || raw === "low") {
+      tidePreference = raw;
+    } else {
+      return { message: "tidePreference must be high, low" };
+    }
+  }
+
+  let tideWindowHours = existing?.tideWindowHours ?? null;
+  if (Object.prototype.hasOwnProperty.call(source, "tideWindowHours")) {
+    changed = true;
+    const raw = source.tideWindowHours;
+    const parsed = parseNumber(raw);
+    if (raw !== undefined && raw !== null && raw !== "" && parsed === null) {
+      return { message: "tideWindowHours must be a number" };
+    }
+    tideWindowHours = parsed;
+  }
+
+  if (
+    (windDirStart !== null && windDirEnd === null) ||
+    (windDirStart === null && windDirEnd !== null)
+  ) {
+    return {
+      message: "windDirStart and windDirEnd must both be provided",
+    };
+  }
+
+  if (windDirStart !== null && (windDirStart < 0 || windDirStart > 359)) {
+    return { message: "windDirStart must be between 0 and 359" };
+  }
+  if (windDirEnd !== null && (windDirEnd < 0 || windDirEnd > 359)) {
+    return { message: "windDirEnd must be between 0 and 359" };
+  }
+
+  if (tideWindowHours !== null && tideWindowHours < 0) {
+    return { message: "tideWindowHours must be 0 or greater" };
+  }
+
+  if (isTidal) {
+    if (!tidePreference) {
+      return { message: "tidePreference is required for tidal spots" };
+    }
+    if (tideWindowHours === null) {
+      return { message: "tideWindowHours is required for tidal spots" };
+    }
+  } else {
+    tidePreference = null;
+    tideWindowHours = null;
+  }
+
+  return {
+    changed,
+    payload: {
+      name: name!,
+      type: type!,
+      latitude: latitude!,
+      longitude: longitude!,
+      description,
+      windDirStart,
+      windDirEnd,
+      isTidal,
+      tidePreference,
+      tideWindowHours,
+    },
+  };
+}
+
+async function loadSpotById(spotId: string): Promise<SpotRecord | null> {
+  const found = await database
+    .select({
+      id: spots.id,
+      name: spots.name,
+      type: spots.type,
+      latitude: spots.latitude,
+      longitude: spots.longitude,
+      description: spots.description,
+      windDirStart: spots.windDirStart,
+      windDirEnd: spots.windDirEnd,
+      isTidal: spots.isTidal,
+      tidePreference: spots.tidePreference,
+      tideWindowHours: spots.tideWindowHours,
+      createdBy: spots.createdBy,
+    })
+    .from(spots)
+    .where(eq(spots.id, spotId))
+    .limit(1);
+
+  return found[0] ?? null;
+}
+
+function canManageSpot(req: Request, spot: SpotRecord) {
+  const userId = req.user?.id;
+  const role = req.user?.role ?? "user";
+  return userId === spot.createdBy || role === "admin";
 }
 
 /**
@@ -105,156 +351,15 @@ export async function createSpot(req: Request, res: Response) {
   try {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
-
-    const name = getRequiredString(req.body?.name);
-    if (!name) return res.status(400).json({ message: "Name is required" });
-
-    const type = getRequiredString(req.body?.type);
-    if (!type) return res.status(400).json({ message: "Type is required" });
-
-    const latitude = parseNumber(req.body?.latitude ?? req.body?.lat);
-    if (latitude === null) {
-      return res.status(400).json({ message: "Latitude is required" });
-    }
-
-    const longitude = parseNumber(req.body?.longitude ?? req.body?.lon);
-    if (longitude === null) {
-      return res.status(400).json({ message: "Longitude is required" });
-    }
-
-    // Optional description (we keep it nullable if missing).
-    const description =
-      typeof req.body?.description === "string"
-        ? req.body.description.trim()
-        : null;
-
-    /**
-     * Optional wind direction + tidal fields.
-     * We only validate them if the user actually provided a value.
-     */
-    const windDirStartRaw = req.body?.windDirStart;
-    const windDirStart = parseNumber(windDirStartRaw);
-    if (
-      windDirStartRaw !== undefined &&
-      windDirStartRaw !== null &&
-      windDirStartRaw !== "" &&
-      windDirStart === null
-    ) {
-      return res.status(400).json({ message: "windDirStart must be a number" });
-    }
-
-    const windDirEndRaw = req.body?.windDirEnd;
-    const windDirEnd = parseNumber(windDirEndRaw);
-    if (
-      windDirEndRaw !== undefined &&
-      windDirEndRaw !== null &&
-      windDirEndRaw !== "" &&
-      windDirEnd === null
-    ) {
-      return res.status(400).json({ message: "windDirEnd must be a number" });
-    }
-
-    // If one direction is set, require the other as well.
-    if (
-      (windDirStart !== null && windDirEnd === null) ||
-      (windDirStart === null && windDirEnd !== null)
-    ) {
+    const parsed = parseSpotState(req.body);
+    if (!parsed.payload) {
       return res
         .status(400)
-        .json({ message: "windDirStart and windDirEnd must both be provided" });
+        .json({ message: parsed.message ?? "Invalid spot payload" });
     }
-
-    // If provided, direction values must be within 0-359.
-    if (windDirStart !== null && (windDirStart < 0 || windDirStart > 359)) {
-      return res
-        .status(400)
-        .json({ message: "windDirStart must be between 0 and 359" });
-    }
-    if (windDirEnd !== null && (windDirEnd < 0 || windDirEnd > 359)) {
-      return res
-        .status(400)
-        .json({ message: "windDirEnd must be between 0 and 359" });
-    }
-
-    // Basic tidal flag (true/false). If missing, it stays null.
-    let isTidal: boolean | null = null;
-    if (typeof req.body?.isTidal === "boolean") {
-      isTidal = req.body.isTidal;
-    } else if (typeof req.body?.isTidal === "string") {
-      const raw = req.body.isTidal.trim().toLowerCase();
-      if (raw === "true") isTidal = true;
-      if (raw === "false") isTidal = false;
-    }
-
-    /**
-     * Optional tide settings for future "kiteable" checks.
-     * Allowed values are intentionally small and explicit.
-     */
-    let tidePreference: "high" | "low" | null = null;
-
-    if (typeof req.body?.tidePreference === "string") {
-      const raw = req.body.tidePreference.trim().toLowerCase();
-
-      if (raw === "high" || raw === "low") {
-        tidePreference = raw;
-      } else if (raw) {
-        return res
-          .status(400)
-          .json({ message: "tidePreference must be high, low" });
-      }
-    }
-
-    const tideWindowHoursRaw = req.body?.tideWindowHours;
-    const tideWindowHours = parseNumber(tideWindowHoursRaw);
-
-    if (
-      tideWindowHoursRaw !== undefined &&
-      tideWindowHoursRaw !== null &&
-      tideWindowHoursRaw !== "" &&
-      tideWindowHours === null
-    ) {
-      return res
-        .status(400)
-        .json({ message: "tideWindowHours must be a number" });
-    }
-    if (tideWindowHours !== null && tideWindowHours < 0) {
-      return res
-        .status(400)
-        .json({ message: "tideWindowHours must be 0 or greater" });
-    }
-
-    if (isTidal) {
-      if (!tidePreference) {
-        return res
-          .status(400)
-          .json({ message: "tidePreference is required for tidal spots" });
-      }
-
-      if (tideWindowHours === null) {
-        return res
-          .status(400)
-          .json({ message: "tideWindowHours is required for tidal spots" });
-      }
-    }
-
-    // it says if spot is tidal, keep tide settings, else store as null
-    const normalizedTidePreference = isTidal ? tidePreference : null;
-    const normalizedTideWindowHours = isTidal ? tideWindowHours : null;
 
     const id = randomUUID();
-
-    const payload: SpotPayload = {
-      name,
-      type,
-      latitude,
-      longitude,
-      description,
-      windDirStart,
-      windDirEnd,
-      isTidal,
-      tidePreference: normalizedTidePreference,
-      tideWindowHours: normalizedTideWindowHours,
-    };
+    const payload = parsed.payload;
 
     await database.insert(spots).values({
       id,
@@ -264,6 +369,57 @@ export async function createSpot(req: Request, res: Response) {
 
     // Return the stored spot so the client has all new fields.
     return res.status(201).json({ id, ...payload, createdBy: userId });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
+ * Update an existing spot. Owners and admins may edit.
+ */
+export async function updateSpot(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    const spotId = getSpotId(req, res);
+    if (!spotId) return;
+
+    const spot = await loadSpotById(spotId);
+    if (!spot) {
+      return res.status(404).json({ message: "Spot not found" });
+    }
+
+    if (!canManageSpot(req, spot)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const parsed = parseSpotState(req.body, spot);
+    if (!parsed.payload) {
+      return res
+        .status(400)
+        .json({ message: parsed.message ?? "Invalid spot payload" });
+    }
+    if (!parsed.changed) {
+      return res.status(400).json({ message: "No spot fields provided" });
+    }
+
+    const payload = parsed.payload;
+
+    await database
+      .update(spots)
+      .set({
+        ...payload,
+        updatedAt: new Date(),
+      })
+      .where(eq(spots.id, spotId));
+
+    return res.status(200).json({
+      id: spotId,
+      ...payload,
+      createdBy: spot.createdBy,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -334,14 +490,21 @@ export async function deleteSpot(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId =
-      typeof req.params.id === "string" ? req.params.id.trim() : "";
-    if (!spotId)
-      return res.status(400).json({ message: "Spot id is required" });
+    const spotId = getSpotId(req, res);
+    if (!spotId) return;
+
+    const spot = await loadSpotById(spotId);
+    if (!spot) {
+      return res.status(404).json({ message: "Spot not found" });
+    }
+
+    if (!canManageSpot(req, spot)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
     const deleted = await database
       .delete(spots)
-      .where(and(eq(spots.id, spotId), eq(spots.createdBy, userId)))
+      .where(eq(spots.id, spotId))
       .returning({ id: spots.id });
 
     if (deleted.length === 0) {
@@ -363,19 +526,11 @@ export async function getSpotRating(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId =
-      typeof req.params.id === "string" ? req.params.id.trim() : "";
-    if (!spotId) {
-      return res.status(400).json({ message: "Spot id is required" });
-    }
+    const spotId = getSpotId(req, res);
+    if (!spotId) return;
 
-    const found = await database
-      .select({ id: spots.id })
-      .from(spots)
-      .where(eq(spots.id, spotId))
-      .limit(1);
-
-    if (found.length === 0) {
+    const spot = await loadSpotById(spotId);
+    if (!spot) {
       return res.status(404).json({ message: "Spot not found" });
     }
 
@@ -394,11 +549,8 @@ export async function upsertSpotRating(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId =
-      typeof req.params.id === "string" ? req.params.id.trim() : "";
-    if (!spotId) {
-      return res.status(400).json({ message: "Spot id is required" });
-    }
+    const spotId = getSpotId(req, res);
+    if (!spotId) return;
 
     const rating = parseStarRating(req.body?.rating);
     if (rating === null) {
@@ -407,13 +559,8 @@ export async function upsertSpotRating(req: Request, res: Response) {
         .json({ message: "rating must be an integer between 1 and 5" });
     }
 
-    const found = await database
-      .select({ id: spots.id })
-      .from(spots)
-      .where(eq(spots.id, spotId))
-      .limit(1);
-
-    if (found.length === 0) {
+    const spot = await loadSpotById(spotId);
+    if (!spot) {
       return res.status(404).json({ message: "Spot not found" });
     }
 
@@ -449,12 +596,8 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
     const userId = getAuthUserId(req, res);
     if (!userId) return;
 
-    const spotId =
-      typeof req.params.id === "string" ? req.params.id.trim() : "";
-      
-    if (!spotId) {
-      return res.status(400).json({ message: "Spot id is required" });
-    }
+    const spotId = getSpotId(req, res);
+    if (!spotId) return;
 
     const directionMode = parseDirectionMode(req.query.directionMode);
 
@@ -467,24 +610,7 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
       ? Math.min(72, Math.max(1, parsedHours))
       : 42;
 
-    const found = await database
-      .select({
-        id: spots.id,
-        name: spots.name,
-        latitude: spots.latitude,
-        longitude: spots.longitude,
-        windDirStart: spots.windDirStart,
-        windDirEnd: spots.windDirEnd,
-        isTidal: spots.isTidal,
-        tidePreference: spots.tidePreference,
-        tideWindowHours: spots.tideWindowHours,
-      })
-      .from(spots)
-      .where(eq(spots.id, spotId))
-      .limit(1);
-
-    const spot = found[0];
-
+    const spot = await loadSpotById(spotId);
     if (!spot) {
       return res.status(404).json({ message: "Spot not found" });
     }

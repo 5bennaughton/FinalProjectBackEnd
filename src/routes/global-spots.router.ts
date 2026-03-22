@@ -7,6 +7,7 @@ import {
   getSpotRating,
   getSpotKiteableForecast,
   searchSpots,
+  updateSpot,
   upsertSpotRating,
 } from "../controllers/global-spots.controller.js";
 
@@ -16,6 +17,7 @@ router.use(authMiddleware);
 router.post("/add-spot", createSpot);
 router.get("/display-spots", displaySpots);
 router.get("/search", searchSpots);
+router.patch("/:id", updateSpot);
 router.get("/:id/kiteable-forecast", getSpotKiteableForecast);
 router.get("/:id/rating", getSpotRating);
 router.post("/:id/rating", upsertSpotRating);

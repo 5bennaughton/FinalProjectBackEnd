@@ -17,6 +17,7 @@ type CreateUserOptions = {
   password?: string;
   bio?: string | null;
   avatarUrl?: string | null;
+  role?: "user" | "admin";
   profileVisibility?: "public" | "friends" | "private";
 };
 
@@ -61,6 +62,7 @@ export async function createUser(options: CreateUserOptions = {}) {
     password: hashedPassword,
     bio: options.bio ?? null,
     avatarUrl: options.avatarUrl ?? null,
+    role: options.role ?? "user",
     profileVisibility: options.profileVisibility ?? "public",
   };
 

@@ -42,6 +42,7 @@ export const register = async (req: Request, res: Response) => {
     name,
     email,
     password: hashedPassword,
+    role: "user",
   });
 
   res.status(201).json({ message: `Thanks for signing up ${name}` });
@@ -70,6 +71,7 @@ export const login = async (req: Request, res: Response) => {
         name: users.name,
         avatarUrl: users.avatarUrl,
         bio: users.bio,
+        role: users.role,
         profileVisibility: users.profileVisibility,
       })
       .from(users)
@@ -103,6 +105,7 @@ export const login = async (req: Request, res: Response) => {
         name: user.name,
         bio: user.bio ?? null,
         avatarUrl: user.avatarUrl ?? null,
+        role: user.role ?? "user",
         profileVisibility: user.profileVisibility ?? "public",
       },
       token: token,
@@ -142,6 +145,7 @@ export const me = async (req: Request, res: Response) => {
         name: users.name,
         bio: users.bio,
         avatarUrl: users.avatarUrl,
+        role: users.role,
         profileVisibility: users.profileVisibility,
       })
       .from(users)
@@ -161,6 +165,7 @@ export const me = async (req: Request, res: Response) => {
       name: user.name,
       bio: user.bio ?? null,
       avatarUrl: user.avatarUrl ?? null,
+      role: user.role ?? "user",
       profileVisibility: user.profileVisibility ?? "public",
       friendCount,
     });

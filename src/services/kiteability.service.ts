@@ -257,7 +257,7 @@ function isHourInsideTideWindow(
 /**
  * Check whether a wind direction sits inside the configured allowed arc.
  */
-function isDirectionInRange(
+export function isDirectionInRange(
   windDirection: number,
   start: number,
   end: number,

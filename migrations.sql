@@ -117,6 +117,12 @@ ALTER TABLE IF EXISTS "User"
   ADD COLUMN IF NOT EXISTS "profileVisibility" text NOT NULL DEFAULT 'public';
 
 /**
+* Add admin role to users 21/03/2026
+**/
+ALTER TABLE IF EXISTS "User"
+  ADD COLUMN IF NOT EXISTS "role" text NOT NULL DEFAULT 'user';
+
+/**
 * Add visibility controls to future sessions 24/01/2026
 **/
 ALTER TABLE IF EXISTS "FutureSession"

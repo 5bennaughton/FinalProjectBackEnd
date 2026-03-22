@@ -31,6 +31,7 @@ export async function getUserProfile(req: Request, res: Response) {
           name: users.name,
           bio: users.bio,
           avatarUrl: users.avatarUrl,
+          role: users.role,
           profileVisibility: users.profileVisibility,
         })
         .from(users)
@@ -51,6 +52,7 @@ export async function getUserProfile(req: Request, res: Response) {
         name: profile.name,
         bio: profile.bio ?? null,
         avatarUrl: profile.avatarUrl ?? null,
+        role: profile.role ?? "user",
         profileVisibility: profile.profileVisibility ?? "public",
         friendCount,
       });
@@ -62,6 +64,7 @@ export async function getUserProfile(req: Request, res: Response) {
         name: users.name,
         bio: users.bio,
         avatarUrl: users.avatarUrl,
+        role: users.role,
         profileVisibility: users.profileVisibility,
       })
       .from(users)
@@ -99,6 +102,7 @@ export async function getUserProfile(req: Request, res: Response) {
       name: profile.name,
       bio: profile.bio ?? null,
       avatarUrl: profile.avatarUrl ?? null,
+      role: profile.role ?? "user",
       friendCount,
     });
   } catch (err) {
@@ -216,6 +220,52 @@ export async function listBlockedUsers(req: Request, res: Response) {
       .where(eq(userBlocks.blockerId, userId));
 
     return res.status(200).json({ users: blocked });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+/**
+ * Update a user's role. Only admins may call this route.
+ */
+export async function updateUserRole(req: Request, res: Response) {
+  try {
+    const userId = getAuthUserId(req, res);
+    if (!userId) return;
+
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const targetUserId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    if (!targetUserId) {
+      return res.status(400).json({ message: "User id is required" });
+    }
+
+    const rawRole = typeof req.body?.role === "string" ? req.body.role.trim().toLowerCase() : "";
+    if (rawRole !== "user" && rawRole !== "admin") {
+      return res.status(400).json({ message: "role must be user or admin" });
+    }
+
+    const updated = await database
+      .update(users)
+      .set({ role: rawRole })
+      .where(eq(users.id, targetUserId))
+      .returning({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+      });
+
+    const target = updated[0];
+    if (!target) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({ user: target });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });
