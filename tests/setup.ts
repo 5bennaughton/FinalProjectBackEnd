@@ -22,9 +22,15 @@ beforeAll(async () => {
       "avatarUrl" text,
       "email" text NOT NULL UNIQUE,
       "password" text NOT NULL,
+      "role" text NOT NULL DEFAULT 'user',
       "profileVisibility" text NOT NULL DEFAULT 'public',
       "createdAt" timestamp(3) NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE IF EXISTS "User"
+      ADD COLUMN IF NOT EXISTS "role" text NOT NULL DEFAULT 'user'
   `);
 
   await database.execute(sql`

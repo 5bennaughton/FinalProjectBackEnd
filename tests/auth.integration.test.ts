@@ -27,6 +27,7 @@ describe("Auth routes", () => {
         name: users.name,
         email: users.email,
         password: users.password,
+        role: users.role,
       })
       .from(users)
       .where(eq(users.email, payload.email))
@@ -36,6 +37,7 @@ describe("Auth routes", () => {
     expect(stored.length).toBe(1);
     expect(stored[0]?.name).toBe(payload.name);
     expect(stored[0]?.password).not.toBe(payload.password);
+    expect(stored[0]?.role).toBe("user");
   });
 
   it("rejects a second registration that reuses an existing email address", async () => {
@@ -60,6 +62,7 @@ describe("Auth routes", () => {
       name: "Logged In User",
       email: "login@example.com",
       password: "super-secret",
+      role: "admin",
     });
 
     const loginRes = await request(app).post("/auth/login").send({
@@ -70,6 +73,7 @@ describe("Auth routes", () => {
     // Make sure login succeeded and produced a token for auth requests
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.user.email).toBe(user.email);
+    expect(loginRes.body.user.role).toBe("admin");
     expect(loginRes.body.token).toEqual(expect.any(String));
 
     // Reuse the returned bearer token against a protected route so the test
@@ -81,6 +85,7 @@ describe("Auth routes", () => {
     // Expect the following
     expect(meRes.status).toBe(200);
     expect(meRes.body.name).toBe("Logged In User");
+    expect(meRes.body.role).toBe("admin");
     expect(meRes.body.friendCount).toBe(0);
   });
 
