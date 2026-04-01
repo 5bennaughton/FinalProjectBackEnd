@@ -20,13 +20,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const app = express();
 
-const allowedOrigins = process.env.FRONTEND_URL
+const defaultOrigins = [
+  "http://localhost:8081",
+  "http://localhost:19006",
+  "http://127.0.0.1:8081",
+  "http://127.0.0.1:19006",
+];
+
+const configuredOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(",").map((origin) => origin.trim())
-  : true;
+  : [];
+
+const allowedOrigins = [...new Set([...defaultOrigins, ...configuredOrigins])];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
     credentials: true,
   })
 );
