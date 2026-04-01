@@ -4,6 +4,23 @@
 **/
 
 /**
+* This is the table that deals with registration/login and auth
+**/
+CREATE TABLE IF NOT EXISTS "User" (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  email text NOT NULL UNIQUE,
+  password text NOT NULL,
+  bio text,
+  "avatarUrl" text,
+  "profileVisibility" text NOT NULL DEFAULT 'public',
+  "role" text NOT NULL DEFAULT 'user',
+  "createdAt" timestamp(3) NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS "User_email_idx" ON "User" (email);
+
+/**
 * This is the table that deals with friend requests 07/01/2026
 **/
 CREATE TABLE IF NOT EXISTS "FriendRequest" (
