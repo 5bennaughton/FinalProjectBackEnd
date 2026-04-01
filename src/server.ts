@@ -2,7 +2,7 @@ import { app } from "./app.js";
 import { pool } from "./db/db.js";
 import { checkDbConnection } from "./db/checkDb.js";
 
-const PORT = 5001;
+const PORT = Number(process.env.PORT) || 5001;
 const server = app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on PORT ${PORT}`)
 );

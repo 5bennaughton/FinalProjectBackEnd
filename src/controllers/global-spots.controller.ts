@@ -65,6 +65,7 @@ export function parseStarRating(value: unknown) {
 function getSpotId(req: Request, res: Response) {
   const spotId =
     typeof req.params.id === "string" ? req.params.id.trim() : "";
+
   if (!spotId) {
     res.status(400).json({ message: "Spot id is required" });
     return null;
@@ -76,6 +77,7 @@ function parseBooleanInput(value: unknown): boolean | null | undefined {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
   if (typeof value === "boolean") return value;
+
   if (typeof value === "string") {
     const raw = value.trim().toLowerCase();
     if (raw === "true") return true;
@@ -95,6 +97,7 @@ export function parseSpotState(
   const name = nameProvided
     ? getRequiredString(source.name)
     : existing?.name ?? null;
+
   if (nameProvided) {
     changed = true;
     if (!name) return { message: "Name is required" };
@@ -102,9 +105,11 @@ export function parseSpotState(
   if (!existing && !name) return { message: "Name is required" };
 
   const typeProvided = Object.prototype.hasOwnProperty.call(source, "type");
+
   const type = typeProvided
     ? getRequiredString(source.type)
     : existing?.type ?? null;
+
   if (typeProvided) {
     changed = true;
     if (!type) return { message: "Type is required" };
@@ -114,10 +119,13 @@ export function parseSpotState(
   const latitudeProvided =
     Object.prototype.hasOwnProperty.call(source, "latitude") ||
     Object.prototype.hasOwnProperty.call(source, "lat");
+
   const latitudeRaw = source.latitude ?? source.lat;
+
   const latitude = latitudeProvided
     ? parseNumber(latitudeRaw)
     : existing?.latitude ?? null;
+
   if (latitudeProvided) {
     changed = true;
     if (latitude === null) return { message: "Latitude is required" };
@@ -129,14 +137,18 @@ export function parseSpotState(
   const longitudeProvided =
     Object.prototype.hasOwnProperty.call(source, "longitude") ||
     Object.prototype.hasOwnProperty.call(source, "lon");
+
   const longitudeRaw = source.longitude ?? source.lon;
+
   const longitude = longitudeProvided
     ? parseNumber(longitudeRaw)
     : existing?.longitude ?? null;
+
   if (longitudeProvided) {
     changed = true;
     if (longitude === null) return { message: "Longitude is required" };
   }
+
   if (!existing && longitude === null) {
     return { message: "Longitude is required" };
   }
@@ -144,6 +156,7 @@ export function parseSpotState(
   let description = existing?.description ?? null;
   if (Object.prototype.hasOwnProperty.call(source, "description")) {
     changed = true;
+
     if (
       source.description !== null &&
       source.description !== undefined &&
@@ -151,6 +164,7 @@ export function parseSpotState(
     ) {
       return { message: "Description must be a string" };
     }
+
     description =
       typeof source.description === "string"
         ? source.description.trim() || null
@@ -160,8 +174,10 @@ export function parseSpotState(
   let windDirStart = existing?.windDirStart ?? null;
   if (Object.prototype.hasOwnProperty.call(source, "windDirStart")) {
     changed = true;
+
     const raw = source.windDirStart;
     const parsed = parseNumber(raw);
+
     if (raw !== undefined && raw !== null && raw !== "" && parsed === null) {
       return { message: "windDirStart must be a number" };
     }
@@ -171,8 +187,10 @@ export function parseSpotState(
   let windDirEnd = existing?.windDirEnd ?? null;
   if (Object.prototype.hasOwnProperty.call(source, "windDirEnd")) {
     changed = true;
+
     const raw = source.windDirEnd;
     const parsed = parseNumber(raw);
+
     if (raw !== undefined && raw !== null && raw !== "" && parsed === null) {
       return { message: "windDirEnd must be a number" };
     }
@@ -182,6 +200,7 @@ export function parseSpotState(
   let isTidal = existing?.isTidal ?? null;
   if (Object.prototype.hasOwnProperty.call(source, "isTidal")) {
     changed = true;
+
     const parsed = parseBooleanInput(source.isTidal);
     if (parsed === undefined) {
       return { message: "isTidal must be true or false" };
@@ -190,8 +209,10 @@ export function parseSpotState(
   }
 
   let tidePreference = existing?.tidePreference ?? null;
+
   if (Object.prototype.hasOwnProperty.call(source, "tidePreference")) {
     changed = true;
+    
     if (
       source.tidePreference !== null &&
       source.tidePreference !== undefined &&
@@ -217,8 +238,10 @@ export function parseSpotState(
   let tideWindowHours = existing?.tideWindowHours ?? null;
   if (Object.prototype.hasOwnProperty.call(source, "tideWindowHours")) {
     changed = true;
+
     const raw = source.tideWindowHours;
     const parsed = parseNumber(raw);
+
     if (raw !== undefined && raw !== null && raw !== "" && parsed === null) {
       return { message: "tideWindowHours must be a number" };
     }
@@ -237,6 +260,7 @@ export function parseSpotState(
   if (windDirStart !== null && (windDirStart < 0 || windDirStart > 359)) {
     return { message: "windDirStart must be between 0 and 359" };
   }
+
   if (windDirEnd !== null && (windDirEnd < 0 || windDirEnd > 359)) {
     return { message: "windDirEnd must be between 0 and 359" };
   }
@@ -249,6 +273,7 @@ export function parseSpotState(
     if (!tidePreference) {
       return { message: "tidePreference is required for tidal spots" };
     }
+    
     if (tideWindowHours === null) {
       return { message: "tideWindowHours is required for tidal spots" };
     }
