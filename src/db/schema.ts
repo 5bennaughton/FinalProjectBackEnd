@@ -1,4 +1,11 @@
-import { boolean, doublePrecision, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  doublePrecision,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 /**
  * Table for the users, deals with registraion/login and auth
@@ -10,10 +17,9 @@ export const users = pgTable("User", {
   avatarUrl: text("avatarUrl"),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
+  role: text("role").notNull().default("user"),
   profileVisibility: text("profileVisibility").notNull().default("public"),
-  createdAt: timestamp("createdAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
 });
 
 /**
@@ -28,12 +34,8 @@ export const friendRequests = pgTable("FriendRequest", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   status: text("status").notNull(),
-  createdAt: timestamp("createdAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updatedAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { precision: 3 }).notNull().defaultNow(),
 });
 
 /**
@@ -51,17 +53,13 @@ export const spots = pgTable("Spot", {
   windDirEnd: doublePrecision("windDirEnd"),
   isTidal: boolean("isTidal"),
   // Optional tide settings used by future kiteability checks.
-  tidePreference: text("tidePreference"), // high | low 
+  tidePreference: text("tidePreference"), // high | low
   tideWindowHours: doublePrecision("tideWindowHours"),
   createdBy: text("createdBy")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  createdAt: timestamp("createdAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updatedAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { precision: 3 }).notNull().defaultNow(),
 });
 
 /**
@@ -77,12 +75,8 @@ export const spotRatings = pgTable("SpotRating", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   rating: integer("rating").notNull(),
-  createdAt: timestamp("createdAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updatedAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { precision: 3 }).notNull().defaultNow(),
 });
 
 /**
@@ -102,12 +96,8 @@ export const futureSessions = pgTable("FutureSession", {
   notes: text("notes"),
   visibility: text("visibility").notNull().default("public"),
   allowedViewerIds: text("allowedViewerIds").array(),
-  createdAt: timestamp("createdAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updatedAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { precision: 3 }).notNull().defaultNow(),
 });
 
 /**
@@ -122,9 +112,7 @@ export const futureSessionComments = pgTable("FutureSessionComment", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   body: text("body").notNull(),
-  createdAt: timestamp("createdAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
 });
 
 /**
@@ -138,7 +126,5 @@ export const userBlocks = pgTable("UserBlock", {
   blockedId: text("blockedId")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  createdAt: timestamp("createdAt", { precision: 3 })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
 });
