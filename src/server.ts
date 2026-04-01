@@ -1,8 +1,12 @@
 import { app } from "./app.js";
+import { bootstrapDatabaseSchema } from "./db/bootstrap.js";
 import { pool } from "./db/db.js";
 import { checkDbConnection } from "./db/checkDb.js";
 
 const PORT = Number(process.env.PORT) || 5001;
+
+await bootstrapDatabaseSchema();
+
 const server = app.listen(PORT, "0.0.0.0", () =>
   console.log(`Server running on PORT ${PORT}`)
 );
