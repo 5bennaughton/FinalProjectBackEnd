@@ -5,8 +5,6 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 
 // Import Routes
-import authStravaRoutes from "./routes/oauth.routes.js";
-import sessionsRoutes from "./routes/session.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import friendRoutes from "./routes/friend.routes.js";
 import futureSessionRoutes from "./routes/future-sessions.router.js";
@@ -50,8 +48,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // API Routes
-app.use("/oauth", authStravaRoutes);
-app.use("/sessions", sessionsRoutes);
 app.use("/auth", authRoutes);
 app.use("/friends", friendRoutes);
 app.use("/future-sessions", futureSessionRoutes);
