@@ -54,6 +54,7 @@ beforeAll(async () => {
       "description" text,
       "windDirStart" double precision,
       "windDirEnd" double precision,
+      "directionMode" text,
       "isTidal" boolean,
       "tidePreference" text,
       "tideWindowHours" double precision,
@@ -61,6 +62,11 @@ beforeAll(async () => {
       "createdAt" timestamp(3) NOT NULL DEFAULT NOW(),
       "updatedAt" timestamp(3) NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE IF EXISTS "Spot"
+      ADD COLUMN IF NOT EXISTS "directionMode" text
   `);
 
   await database.execute(sql`

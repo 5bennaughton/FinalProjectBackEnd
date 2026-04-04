@@ -41,6 +41,7 @@ describe("global spot helpers", () => {
       description: "Flat water",
       windDirStart: null,
       windDirEnd: null,
+      directionMode: null,
       isTidal: false,
       tidePreference: null,
       tideWindowHours: null,
