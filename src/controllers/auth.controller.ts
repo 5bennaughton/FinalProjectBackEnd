@@ -212,12 +212,17 @@ export const updateProfile = async (req: Request, res: Response) => {
     }
 
     if (req.body?.avatarUrl !== undefined) {
-      if (typeof req.body.avatarUrl !== "string") {
+      if (req.body.avatarUrl !== null && typeof req.body.avatarUrl !== "string") {
         return res.status(400).json({ message: "Avatar URL must be a string" });
       }
-      const trimmed = req.body.avatarUrl.trim();
-      // Empty string clears the avatar.
-      updates.avatarUrl = trimmed ? trimmed : null;
+      // Profile saves may include a null avatar when no photo is set yet.
+      if (req.body.avatarUrl === null) {
+        updates.avatarUrl = null;
+      } else {
+        const trimmed = req.body.avatarUrl.trim();
+        // Empty string clears the avatar.
+        updates.avatarUrl = trimmed ? trimmed : null;
+      }
     }
 
     if (req.body?.profileVisibility !== undefined) {
