@@ -171,6 +171,8 @@ ALTER TABLE IF EXISTS "Spot"
   ADD COLUMN IF NOT EXISTS "tidePreference" text;
 ALTER TABLE IF EXISTS "Spot"
   ADD COLUMN IF NOT EXISTS "tideWindowHours" double precision;
+ALTER TABLE IF EXISTS "Spot"
+  ADD COLUMN IF NOT EXISTS "directionMode" text;
 
 /**
 * This is the table that stores per-user star ratings for spots 24/02/2026

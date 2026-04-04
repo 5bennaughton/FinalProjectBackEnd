@@ -10,6 +10,7 @@ import {
 } from "../helpers/helperFunctions.js";
 import {
   buildSpotHourlyForecast,
+  parseStoredDirectionMode,
   type DirectionMode,
 } from "../services/kiteability.service.js";
 
@@ -21,6 +22,7 @@ export type SpotPayload = {
   description: string | null;
   windDirStart: number | null;
   windDirEnd: number | null;
+  directionMode: DirectionMode | null;
   isTidal: boolean | null;
   tidePreference: string | null;
   tideWindowHours: number | null;
@@ -39,7 +41,7 @@ type SpotRatingSummary = {
 };
 
 /**
- * Reads direction mode from query params and falls back to shortest-arc mode.
+ * Reads direction mode from input and keeps the accepted values narrow.
  */
 export function parseDirectionMode(raw: unknown): DirectionMode | undefined {
   if (typeof raw !== "string") return undefined;
@@ -197,6 +199,27 @@ export function parseSpotState(
     windDirEnd = parsed;
   }
 
+  let directionMode = existing?.directionMode ?? null;
+  if (Object.prototype.hasOwnProperty.call(source, "directionMode")) {
+    changed = true;
+
+    if (
+      source.directionMode === null ||
+      source.directionMode === undefined ||
+      source.directionMode === ""
+    ) {
+      directionMode = null;
+    } else {
+      const parsed = parseDirectionMode(source.directionMode);
+
+      if (!parsed) {
+        return { message: "directionMode must be clockwise or anticlockwise" };
+      }
+
+      directionMode = parsed;
+    }
+  }
+
   let isTidal = existing?.isTidal ?? null;
   if (Object.prototype.hasOwnProperty.call(source, "isTidal")) {
     changed = true;
@@ -292,6 +315,7 @@ export function parseSpotState(
       description,
       windDirStart,
       windDirEnd,
+      directionMode,
       isTidal,
       tidePreference,
       tideWindowHours,
@@ -310,6 +334,7 @@ async function loadSpotById(spotId: string): Promise<SpotRecord | null> {
       description: spots.description,
       windDirStart: spots.windDirStart,
       windDirEnd: spots.windDirEnd,
+      directionMode: spots.directionMode,
       isTidal: spots.isTidal,
       tidePreference: spots.tidePreference,
       tideWindowHours: spots.tideWindowHours,
@@ -319,7 +344,13 @@ async function loadSpotById(spotId: string): Promise<SpotRecord | null> {
     .where(eq(spots.id, spotId))
     .limit(1);
 
-  return found[0] ?? null;
+  const spot = found[0];
+  if (!spot) return null;
+
+  return {
+    ...spot,
+    directionMode: parseStoredDirectionMode(spot.directionMode),
+  };
 }
 
 function canManageSpot(req: Request, spot: SpotRecord) {
@@ -491,6 +522,7 @@ export async function searchSpots(req: Request, res: Response) {
         description: spots.description,
         windDirStart: spots.windDirStart,
         windDirEnd: spots.windDirEnd,
+        directionMode: spots.directionMode,
         isTidal: spots.isTidal,
         tidePreference: spots.tidePreference,
         tideWindowHours: spots.tideWindowHours,
@@ -624,8 +656,6 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
     const spotId = getSpotId(req, res);
     if (!spotId) return;
 
-    const directionMode = parseDirectionMode(req.query.directionMode);
-
     const rawHours =
       typeof req.query.hours === "string" ? req.query.hours.trim() : "";
     const parsedHours = rawHours ? Number.parseInt(rawHours, 10) : 42;
@@ -662,10 +692,14 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
       }
     }
 
+    const requestedDirectionMode = parseDirectionMode(req.query.directionMode);
+    const directionMode = spot.directionMode ?? requestedDirectionMode;
+
     let result;
     try {
       // Reuse the shared forecast builder so spot forecasts and session
-      // forecasts rely on the same kiteability rules.
+      // forecasts rely on the same kiteability rules. Stored spot config wins,
+      // while the query param remains a fallback for older spots.
       result = await buildSpotHourlyForecast(spot, hours, directionMode);
     } catch (error) {
       console.error(error);

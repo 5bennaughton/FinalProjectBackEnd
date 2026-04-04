@@ -18,6 +18,7 @@ export type SpotForecastConfig = {
   longitude: number;
   windDirStart: number | null;
   windDirEnd: number | null;
+  directionMode?: string | null;
   isTidal: boolean | null;
   tidePreference: string | null;
   tideWindowHours: number | null;
@@ -69,6 +70,20 @@ export function parseStoredTidePreference(
     cleaned === "after_low"
   ) {
     return cleaned.endsWith("_high") ? "high" : "low";
+  }
+
+  return null;
+}
+
+/**
+ * Normalize stored direction mode values so old/null rows can still fall back safely.
+ */
+export function parseStoredDirectionMode(value: unknown): DirectionMode | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().toLowerCase();
+
+  if (cleaned === "clockwise" || cleaned === "anticlockwise") {
+    return cleaned;
   }
 
   return null;
@@ -295,6 +310,8 @@ export async function buildSpotHourlyForecast(
   hours: number,
   directionMode?: DirectionMode
 ): Promise<SpotForecastBuildResult> {
+  const resolvedDirectionMode =
+    parseStoredDirectionMode(spot.directionMode) ?? directionMode;
   const hourly = await fetchHourlyWind(spot.latitude, spot.longitude, hours);
 
   const spotIsTidal = spot.isTidal === true;
@@ -343,7 +360,7 @@ export async function buildSpotHourlyForecast(
       directionDegrees,
       spot.windDirStart as number,
       spot.windDirEnd as number,
-      directionMode
+      resolvedDirectionMode
     );
 
     const speedOk = speedKnots >= minimumWindKnots && speedKnots <= maxWindKnots;
@@ -386,7 +403,7 @@ export async function buildSpotHourlyForecast(
       maxWindKn: maxWindKnots,
       windDirStart: spot.windDirStart as number,
       windDirEnd: spot.windDirEnd as number,
-      directionMode,
+      directionMode: resolvedDirectionMode,
       isTidal: spotIsTidal,
       tidePreference,
       tideWindowHours,

@@ -719,6 +719,7 @@ export async function getSessionKiteability(req: Request, res: Response) {
         longitude: spots.longitude,
         windDirStart: spots.windDirStart,
         windDirEnd: spots.windDirEnd,
+        directionMode: spots.directionMode,
         isTidal: spots.isTidal,
         tidePreference: spots.tidePreference,
         tideWindowHours: spots.tideWindowHours,
@@ -755,8 +756,8 @@ export async function getSessionKiteability(req: Request, res: Response) {
 
     let forecastResult;
     try {
-      // Reuse the exact same spot forecast rules that already power the
-      // spot details screen so session kiteability stays consistent.
+      // The shared forecast builder now reads the stored spot direction mode,
+      // so spot details and session badges evaluate the same rule set.
       forecastResult = await buildSpotHourlyForecast(linkedSpot, hoursNeeded);
     } catch (error) {
       console.error(error);

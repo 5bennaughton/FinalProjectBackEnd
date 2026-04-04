@@ -51,6 +51,7 @@ export const spots = pgTable("Spot", {
   // Optional wind/tide metadata for the spot (basic version).
   windDirStart: doublePrecision("windDirStart"),
   windDirEnd: doublePrecision("windDirEnd"),
+  directionMode: text("directionMode"),
   isTidal: boolean("isTidal"),
   // Optional tide settings used by future kiteability checks.
   tidePreference: text("tidePreference"), // high | low
