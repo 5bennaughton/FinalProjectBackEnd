@@ -634,6 +634,7 @@ export async function listNearbySessions(req: Request, res: Response) {
         ON "User"."id" = "FutureSession"."userId"
       WHERE "FutureSession"."latitude" IS NOT NULL
         AND "FutureSession"."longitude" IS NOT NULL
+        AND "FutureSession"."time" > NOW()
         AND ST_DWithin(
           ST_SetSRID(
             ST_MakePoint("FutureSession"."longitude", "FutureSession"."latitude"),
