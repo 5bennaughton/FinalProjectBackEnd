@@ -132,6 +132,40 @@ export async function isBlockedBetween(userA: string, userB: string) {
 }
 
 /**
+ * Decide whether a user is allowed to access another user's profile-level
+ * data. This is shared by the profile endpoint and the "list another user's
+ * posts" endpoint so both routes enforce the same privacy rules.
+ */
+export async function canViewUserProfile(
+  viewerId: string,
+  targetUserId: string,
+  profileVisibility: string | null | undefined
+) {
+  // Owners can always view their own profile and related profile-scoped data.
+  if (viewerId === targetUserId) {
+    return true;
+  }
+
+  // Block relationships override all profile visibility settings.
+  if (await isBlockedBetween(viewerId, targetUserId)) {
+    return false;
+  }
+
+  const visibility = profileVisibility ?? "public";
+
+  if (visibility === "private") {
+    return false;
+  }
+
+  if (visibility === "friends") {
+    const viewerFriendIds = await getFriendIdsForUser(viewerId);
+    return viewerFriendIds.includes(targetUserId);
+  }
+
+  return true;
+}
+
+/**
  * Ensures value is a string, then trims the string and returns
  */
 export function getRequiredString(value: unknown): string | null {

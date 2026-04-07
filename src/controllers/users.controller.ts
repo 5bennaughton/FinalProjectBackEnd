@@ -5,8 +5,8 @@ import { database } from "../db/db.js";
 import { userBlocks, users } from "../db/schema.js";
 import {
   getAuthUserId,
+  canViewUserProfile,
   getFriendIdsForUser,
-  isBlockedBetween,
 } from "../helpers/helperFunctions.js";
 
 /**
@@ -76,21 +76,15 @@ export async function getUserProfile(req: Request, res: Response) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Blocked users should not be able to view each other's profiles.
-    if (await isBlockedBetween(userId, targetUserId)) {
+    // Reuse the same helper that protects profile-scoped post access so
+    // profile visibility behaves consistently across endpoints.
+    const canViewProfile = await canViewUserProfile(
+      userId,
+      targetUserId,
+      profile.profileVisibility
+    );
+    if (!canViewProfile) {
       return res.status(403).json({ message: "Profile not available" });
-    }
-
-    const visibility = profile.profileVisibility ?? "public";
-    if (visibility === "private") {
-      return res.status(403).json({ message: "Profile not available" });
-    }
-
-    if (visibility === "friends") {
-      const viewerFriendIds = await getFriendIdsForUser(userId);
-      if (!viewerFriendIds.includes(targetUserId)) {
-        return res.status(403).json({ message: "Profile not available" });
-      }
     }
 
     // Count accepted friends for the viewed user.

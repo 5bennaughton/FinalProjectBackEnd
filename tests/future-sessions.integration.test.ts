@@ -198,4 +198,29 @@ describe("Future session visibility and permissions", () => {
     expect(commentRes.status).toBe(403);
     expect(commentRes.body.message).toBe("Not allowed to comment on this post");
   });
+
+  it("blocks post listing when the target user's profile is private", async () => {
+    // Private profiles should not leak their post list through a different
+    // endpoint, even when some posts would otherwise be public.
+    const owner = await createUser({
+      email: "owner-private-profile@example.com",
+      profileVisibility: "private",
+    });
+    const viewer = await createUser({
+      email: "viewer-private-profile@example.com",
+    });
+
+    await createFutureSessionRecord({
+      userId: owner.id,
+      visibility: "public",
+      location: "Should stay hidden",
+    });
+
+    const res = await request(app)
+      .get(`/future-sessions/list-posts/${owner.id}`)
+      .set(authHeaderFor(viewer.id, viewer.email));
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe("Not allowed to view posts");
+  });
 });

@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import {
+  canViewUserProfile,
   getAuthUserId,
   getBlockedUserIds,
   getFriendIdsForUser,
@@ -345,8 +346,28 @@ export async function listPosts(req: Request, res: Response) {
     const targetUserId = paramUserId || authUserId;
 
     if (targetUserId !== authUserId) {
-      // Do not expose posts when users are blocked from each other.
-      if (await isBlockedBetween(authUserId, targetUserId)) {
+      // Keep the posts route aligned with profile privacy. If the viewer
+      // cannot access the profile, they should not be able to list its posts.
+      const targetUsers = await database
+        .select({
+          id: users.id,
+          profileVisibility: users.profileVisibility,
+        })
+        .from(users)
+        .where(eq(users.id, targetUserId))
+        .limit(1);
+
+      const targetUser = targetUsers[0];
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const canViewProfile = await canViewUserProfile(
+        authUserId,
+        targetUserId,
+        targetUser.profileVisibility
+      );
+      if (!canViewProfile) {
         return res.status(403).json({ message: "Not allowed to view posts" });
       }
     }
