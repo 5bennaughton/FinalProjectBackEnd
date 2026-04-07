@@ -667,10 +667,38 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
 
     const spot = await loadSpotById(spotId);
     if (!spot) {
+      console.warn("[forecast] spot not found", {
+        userId,
+        spotId,
+      });
       return res.status(404).json({ message: "Spot not found" });
     }
 
+    const requestedDirectionMode = parseDirectionMode(req.query.directionMode);
+
+    console.log("[forecast] request start", {
+      userId,
+      spotId,
+      hours,
+      requestedDirectionMode,
+      storedDirectionMode: spot.directionMode,
+      spotConfig: {
+        latitude: spot.latitude,
+        longitude: spot.longitude,
+        windDirStart: spot.windDirStart,
+        windDirEnd: spot.windDirEnd,
+        isTidal: spot.isTidal,
+        tidePreference: spot.tidePreference,
+        tideWindowHours: spot.tideWindowHours,
+      },
+    });
+
     if (spot.windDirStart === null || spot.windDirEnd === null) {
+      console.warn("[forecast] missing wind range", {
+        spotId,
+        windDirStart: spot.windDirStart,
+        windDirEnd: spot.windDirEnd,
+      });
       return res.status(400).json({
         message: "Spot wind direction range is not configured",
       });
@@ -686,13 +714,16 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
         Number.isFinite(spot.tideWindowHours);
 
       if (!hasValidTidePreference || !hasValidTideWindow) {
+        console.warn("[forecast] incomplete tidal settings", {
+          spotId,
+          tidePreference: spot.tidePreference,
+          tideWindowHours: spot.tideWindowHours,
+        });
         return res.status(400).json({
           message: "Spot tidal settings are incomplete",
         });
       }
     }
-
-    const requestedDirectionMode = parseDirectionMode(req.query.directionMode);
     const directionMode = spot.directionMode ?? requestedDirectionMode;
 
     let result;
@@ -702,7 +733,13 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
       // while the query param remains a fallback for older spots.
       result = await buildSpotHourlyForecast(spot, hours, directionMode);
     } catch (error) {
-      console.error(error);
+      console.error("[forecast] build failed", {
+        spotId,
+        userId,
+        hours,
+        directionMode,
+        error,
+      });
       const message =
         error instanceof Error ? error.message : "Failed to build forecast";
 
@@ -724,6 +761,14 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
           : "Failed to fetch weather forecast",
       });
     }
+
+    console.log("[forecast] request success", {
+      spotId,
+      userId,
+      requestedHours: hours,
+      kiteableHours: result.kiteableHours,
+      forecastCount: result.forecast.length,
+    });
 
     return res.status(200).json({
       spotId: spot.id,

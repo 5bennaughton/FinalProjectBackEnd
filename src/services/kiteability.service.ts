@@ -97,12 +97,26 @@ async function fetchOpenMeteoJson(url: string) {
 
   for (let attempt = 0; attempt <= openMeteoMaxRetries; attempt += 1) {
     try {
+      console.log("[forecast] open-meteo fetch", {
+        attempt: attempt + 1,
+        url,
+      });
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Weather API error (${response.status})`);
       }
-      return await response.json();
+      const payload = await response.json();
+      console.log("[forecast] open-meteo fetch ok", {
+        attempt: attempt + 1,
+        url,
+      });
+      return payload;
     } catch (error) {
+      console.error("[forecast] open-meteo fetch failed", {
+        attempt: attempt + 1,
+        url,
+        error,
+      });
       lastError = error;
     }
   }
@@ -312,6 +326,12 @@ export async function buildSpotHourlyForecast(
 ): Promise<SpotForecastBuildResult> {
   const resolvedDirectionMode =
     parseStoredDirectionMode(spot.directionMode) ?? directionMode;
+  console.log("[forecast] build start", {
+    spotId: spot.id,
+    hours,
+    resolvedDirectionMode,
+    isTidal: spot.isTidal,
+  });
   const hourly = await fetchHourlyWind(spot.latitude, spot.longitude, hours);
 
   const spotIsTidal = spot.isTidal === true;
@@ -337,6 +357,12 @@ export async function buildSpotHourlyForecast(
       hours
     );
     tideEvents = extractTideEvents(tideHourly.times, tideHourly.levels);
+    console.log("[forecast] tide events derived", {
+      spotId: spot.id,
+      count: tideEvents.length,
+      tidePreference,
+      tideWindowHours,
+    });
   }
 
   const count = Math.min(
@@ -394,6 +420,12 @@ export async function buildSpotHourlyForecast(
       kiteable: directionOk && speedOk && tideOk,
     });
   }
+
+  console.log("[forecast] build success", {
+    spotId: spot.id,
+    forecastCount: forecast.length,
+    kiteableHours: forecast.filter((hour) => hour.kiteable).length,
+  });
 
   return {
     forecast,
