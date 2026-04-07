@@ -190,3 +190,7 @@ CREATE TABLE IF NOT EXISTS "SpotRating" (
 
 CREATE INDEX IF NOT EXISTS "SpotRating_spotId_idx" ON "SpotRating" ("spotId");
 CREATE INDEX IF NOT EXISTS "SpotRating_userId_idx" ON "SpotRating" ("userId");
+
+UPDATE "User"
+SET "role" = 'admin'
+WHERE "email" = 'userOne'
