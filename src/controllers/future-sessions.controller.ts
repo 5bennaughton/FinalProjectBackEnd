@@ -15,7 +15,9 @@ import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { buildSpotHourlyForecast } from "../services/kiteability.service.js";
 
 const SPORT_OPTIONS = ["kitesurfing", "wingfoiling", "windsurfing", "surfing"];
-const VISIBILITY_OPTIONS = ["public", "friends", "private", "custom"] as const;
+// Keep accepting the older "friends" value from stored records, but new
+// requests only use the simplified public/private/custom model.
+const VISIBILITY_OPTIONS = ["public", "private", "custom", "friends"] as const;
 type PostVisibility = (typeof VISIBILITY_OPTIONS)[number];
 type Sport = (typeof SPORT_OPTIONS)[number];
 const sessionKiteabilityForecastWindowHours = 48;
@@ -59,7 +61,7 @@ function parseVisibility(value: unknown): PostVisibility {
   if (typeof value !== "string") return "public";
   const parsed = value.trim().toLowerCase();
   return VISIBILITY_OPTIONS.includes(parsed as PostVisibility)
-    ? (parsed as PostVisibility)
+    ? ((parsed === "friends" ? "private" : parsed) as PostVisibility)
     : "public";
 }
 
@@ -103,8 +105,9 @@ function canViewPost(
 
   const visibility = (post.visibility ?? "public") as PostVisibility;
   if (visibility === "public") return true;
-  if (visibility === "private") return false;
-  if (visibility === "friends") {
+  // In the simplified model, "private" means "friends only". Older stored
+  // "friends" values follow the same rule so existing records still work.
+  if (visibility === "private" || visibility === "friends") {
     return post.userId ? friendIds.has(post.userId) : false;
   }
   if (visibility === "custom") {

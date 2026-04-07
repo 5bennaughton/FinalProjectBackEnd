@@ -232,12 +232,12 @@ export const updateProfile = async (req: Request, res: Response) => {
           .json({ message: "Profile visibility must be a string" });
       }
       const trimmed = req.body.profileVisibility.trim().toLowerCase();
-      const allowed = ["public", "friends", "private"];
+      const allowed = ["public", "private"];
       if (!allowed.includes(trimmed)) {
         return res
           .status(400)
           .json({
-            message: "Profile visibility must be public, friends, or private",
+            message: "Profile visibility must be public or private",
           });
       }
       updates.profileVisibility = trimmed;

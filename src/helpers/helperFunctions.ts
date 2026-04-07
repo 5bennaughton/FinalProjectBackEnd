@@ -153,11 +153,9 @@ export async function canViewUserProfile(
 
   const visibility = profileVisibility ?? "public";
 
-  if (visibility === "private") {
-    return false;
-  }
-
-  if (visibility === "friends") {
+  // In the simplified privacy model, "private" means "friends only".
+  // Keep supporting older stored "friends" values as the same rule.
+  if (visibility === "private" || visibility === "friends") {
     const viewerFriendIds = await getFriendIdsForUser(viewerId);
     return viewerFriendIds.includes(targetUserId);
   }

@@ -18,7 +18,7 @@ type CreateUserOptions = {
   bio?: string | null;
   avatarUrl?: string | null;
   role?: "user" | "admin";
-  profileVisibility?: "public" | "friends" | "private";
+  profileVisibility?: "public" | "private";
 };
 
 type CreateSpotOptions = {
@@ -45,7 +45,7 @@ type CreateFutureSessionOptions = {
   location?: string;
   latitude?: number | null;
   longitude?: number | null;
-  visibility?: "public" | "friends" | "private" | "custom";
+  visibility?: "public" | "private" | "custom";
   allowedViewerIds?: string[] | null;
 };
 

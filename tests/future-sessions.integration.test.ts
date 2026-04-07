@@ -17,17 +17,12 @@ describe("Future session visibility and permissions", () => {
       email: "owner-self@example.com",
     });
 
-    // create four posts with different visibility settings so the test proves
+    // Create three posts with different visibility settings so the test proves
     // the owner path returns everything, not only the public records.
     const publicPost = await createFutureSessionRecord({
       userId: owner.id,
       visibility: "public",
       location: "Public Spot",
-    });
-    const friendsPost = await createFutureSessionRecord({
-      userId: owner.id,
-      visibility: "friends",
-      location: "Friends Spot",
     });
     const privatePost = await createFutureSessionRecord({
       userId: owner.id,
@@ -48,20 +43,20 @@ describe("Future session visibility and permissions", () => {
 
     // The owner should receive every post back, including the private and custom ones.
     expect(res.status).toBe(200);
-    expect(res.body.posts).toHaveLength(4);
+    expect(res.body.posts).toHaveLength(3);
     expect(res.body.posts.map((post: { id: string }) => post.id)).toEqual(
       expect.arrayContaining([
         publicPost.id,
-        friendsPost.id,
         privatePost.id,
         customPost.id,
       ])
     );
+    expect(res.body.posts).toHaveLength(3);
   });
 
-  it("shows a friend the public, friends-only, and explicitly allowed custom posts", async () => {
-    // Create an owner and a friend because the route needs an accepted
-    // friendship to expose 'friends' visibility records.
+  it("shows a friend the public, private, and explicitly allowed custom posts", async () => {
+    // Create an owner and a friend because the private mode now maps to
+    // friend-only visibility.
     const owner = await createUser({
       email: "owner-friend@example.com",
     });
@@ -78,15 +73,10 @@ describe("Future session visibility and permissions", () => {
       visibility: "public",
       location: "Friend Can See Public",
     });
-    const friendsPost = await createFutureSessionRecord({
-      userId: owner.id,
-      visibility: "friends",
-      location: "Friend Can See Friends",
-    });
     const privatePost = await createFutureSessionRecord({
       userId: owner.id,
       visibility: "private",
-      location: "Friend Cannot See Private",
+      location: "Friend Can See Private",
     });
     const customPost = await createFutureSessionRecord({
       userId: owner.id,
@@ -100,14 +90,10 @@ describe("Future session visibility and permissions", () => {
       .get(`/future-sessions/list-posts/${owner.id}`)
       .set(authHeaderFor(friend.id, friend.email));
 
-    // The friend should see public, friends, and allowed custom posts,
-    // but private posts should still stay hidden.
+    // Friends can now see both public and private posts, plus allowed custom posts.
     expect(res.status).toBe(200);
     expect(res.body.posts.map((post: { id: string }) => post.id)).toEqual(
-      expect.arrayContaining([publicPost.id, friendsPost.id, customPost.id])
-    );
-    expect(res.body.posts.map((post: { id: string }) => post.id)).not.toContain(
-      privatePost.id
+      expect.arrayContaining([publicPost.id, privatePost.id, customPost.id])
     );
     expect(res.body.posts).toHaveLength(3);
   });
@@ -122,15 +108,12 @@ describe("Future session visibility and permissions", () => {
       email: "stranger-viewer@example.com",
     });
 
-    // creating more posts that cover the public, friends, private, allowed custom,
+    // creating more posts that cover the public, legacy friend-only/private,
+    // allowed custom,
     // and denied custom branches for a non-friend viewer
     const publicPost = await createFutureSessionRecord({
       userId: owner.id,
       visibility: "public",
-    });
-    await createFutureSessionRecord({
-      userId: owner.id,
-      visibility: "friends",
     });
     await createFutureSessionRecord({
       userId: owner.id,

@@ -10,9 +10,9 @@ import {
 
 const VISIBILITY = {
   PUBLIC: "public",
-  FRIENDS: "friends",
   PRIVATE: "private",
   CUSTOM: "custom",
+  FRIENDS: "friends",
 } as const;
 
 type PostVisibility = (typeof VISIBILITY)[keyof typeof VISIBILITY];
@@ -30,8 +30,7 @@ function canViewPost(
   const visibility = (post.visibility ?? VISIBILITY.PUBLIC) as PostVisibility;
 
   if (visibility === VISIBILITY.PUBLIC) return true;
-  if (visibility === VISIBILITY.PRIVATE) return false;
-  if (visibility === VISIBILITY.FRIENDS) {
+  if (visibility === VISIBILITY.PRIVATE || visibility === VISIBILITY.FRIENDS) {
     return post.userId ? friendIds.has(post.userId) : false;
   }
 
