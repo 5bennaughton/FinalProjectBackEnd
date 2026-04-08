@@ -658,12 +658,12 @@ export async function getSpotKiteableForecast(req: Request, res: Response) {
 
     const rawHours =
       typeof req.query.hours === "string" ? req.query.hours.trim() : "";
-    const parsedHours = rawHours ? Number.parseInt(rawHours, 10) : 42;
+    const parsedHours = rawHours ? Number.parseInt(rawHours, 10) : 48;
 
     // Keep API calls bounded in this version.
     const hours = Number.isFinite(parsedHours)
       ? Math.min(72, Math.max(1, parsedHours))
-      : 42;
+      : 48;
 
     const spot = await loadSpotById(spotId);
     if (!spot) {
